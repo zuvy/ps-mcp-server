@@ -79,6 +79,7 @@ function registerGetPluginInfo(
         description: data.description,
         pluginXmlPath,
         workspaceLayout: ws.layout,
+        discoveryMethod: ws.discoveryMethod,
         artifactsRoot: ws.artifactsRoot,
         oauth: {
           enabled: data.oauth,

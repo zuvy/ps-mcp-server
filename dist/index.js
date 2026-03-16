@@ -255,31 +255,53 @@ function detectWorkspace(rootCandidates) {
   const candidates = [];
   const envRoot = process.env["PS_PLUGIN_ROOT"];
   if (envRoot) {
-    candidates.push({ dir: path2.resolve(envRoot), layout: "env" });
+    const abs = path2.resolve(envRoot);
+    candidates.push({
+      dir: abs,
+      layout: "env",
+      discoveryMethod: `PS_PLUGIN_ROOT="${envRoot}"`
+    });
+    candidates.push({
+      dir: path2.join(abs, "src"),
+      layout: "env-src",
+      discoveryMethod: `PS_PLUGIN_ROOT="${envRoot}" (src subfolder)`
+    });
   }
   if (rootCandidates) {
     for (const r of rootCandidates) {
       const abs = path2.resolve(r);
-      candidates.push({ dir: path2.join(abs, "src"), layout: "src-based" });
-      candidates.push({ dir: abs, layout: "flat" });
+      candidates.push({ dir: path2.join(abs, "src"), layout: "src-based", discoveryMethod: `MCP root "${r}" (src subfolder)` });
+      candidates.push({ dir: abs, layout: "flat", discoveryMethod: `MCP root "${r}"` });
     }
   }
   let dir = process.cwd();
   for (let i = 0; i < 10; i++) {
-    candidates.push({ dir: path2.join(dir, "src"), layout: "src-based" });
-    candidates.push({ dir, layout: "flat" });
+    candidates.push({ dir: path2.join(dir, "src"), layout: "src-based", discoveryMethod: `cwd walk-up (${dir}/src)` });
+    candidates.push({ dir, layout: "flat", discoveryMethod: `cwd walk-up (${dir})` });
     const parent = path2.dirname(dir);
     if (parent === dir) break;
     dir = parent;
   }
-  for (const { dir: candidate, layout } of candidates) {
+  let envCandidatesExhausted = false;
+  let envCandidateCount = 0;
+  if (envRoot) envCandidateCount = 2;
+  for (let i = 0; i < candidates.length; i++) {
+    const { dir: candidate, layout, discoveryMethod } = candidates[i];
+    if (envRoot && !envCandidatesExhausted && i >= envCandidateCount) {
+      envCandidatesExhausted = true;
+      process.stderr.write(
+        `[ps-mcp] Warning: PS_PLUGIN_ROOT="${envRoot}" set but no plugin.xml found at "${path2.resolve(envRoot)}" or "${path2.join(path2.resolve(envRoot), "src")}". Falling back to cwd walk-up.
+`
+      );
+    }
     const pluginXml = path2.join(candidate, "plugin.xml");
     if (fs3.existsSync(pluginXml)) {
       return {
         artifactsRoot: candidate,
         layout,
         dirs: resolveArtifactDirs(candidate),
-        pluginXmlPath: pluginXml
+        pluginXmlPath: pluginXml,
+        discoveryMethod
       };
     }
   }
@@ -1387,6 +1409,7 @@ function registerGetPluginInfo(server, getWorkspace) {
         description: data.description,
         pluginXmlPath,
         workspaceLayout: ws.layout,
+        discoveryMethod: ws.discoveryMethod,
         artifactsRoot: ws.artifactsRoot,
         oauth: {
           enabled: data.oauth,
