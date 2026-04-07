@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import path from 'path';
+import { loggedTool } from '../lib/logger.js';
 import { WorkspaceContext } from '../lib/workspace.js';
 import { readPluginXml, writePluginXml } from '../lib/plugin-xml.js';
 import { validateForPackage, buildPluginZip } from '../lib/packager.js';
@@ -33,7 +34,7 @@ export function registerPackageTools(
   server: McpServer,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'bump_plugin_version',
     'Update the version attribute in plugin.xml. Port of the release.rb script. Provide either an explicit version string or a bump direction (major/minor/patch).',
     {
@@ -143,7 +144,7 @@ export function registerPackageTools(
 
   // ---- package_plugin -------------------------------------------------------
 
-  server.tool(
+  loggedTool(server,
     'package_plugin',
     'Build a distributable ZIP from the plugin artifacts root. Runs pre-flight validation (plugin.xml required fields, named query parse errors, duplicate query names) before packaging. Returns the output path and file size.',
     {
@@ -156,13 +157,17 @@ export function registerPackageTools(
       force: z
         .boolean()
         .default(false)
-        .describe('Skip pre-flight validation and overwrite existing output file (default: false)'),
+        .describe('Overwrite existing output file without prompting (default: false)'),
+      skipValidation: z
+        .boolean()
+        .default(false)
+        .describe('Skip pre-flight validation of plugin.xml and named query files (default: false)'),
     },
-    async ({ outputPath, force }) => {
+    async ({ outputPath, force, skipValidation }) => {
       const ws = requireWorkspace(getWorkspace);
 
-      // Pre-flight validation (unless force)
-      if (!force) {
+      // Pre-flight validation (unless skipValidation)
+      if (!skipValidation) {
         const validation = validateForPackage(ws.pluginXmlPath, ws.dirs.queriesRoot);
         if (!validation.valid) {
           return {
@@ -192,7 +197,31 @@ export function registerPackageTools(
         const pluginData = readPluginXml(ws.pluginXmlPath);
         const safeName = (pluginData.name || 'plugin').replace(/[^a-zA-Z0-9._-]/g, '_');
         const safeVersion = (pluginData.version || '0.0.0').replace(/[^a-zA-Z0-9._-]/g, '_');
-        resolvedOutputPath = path.join(ws.artifactsRoot, '..', 'dist', `${safeName}-v${safeVersion}.zip`);
+        // For flat/env layouts dist/ lives inside artifactsRoot; for src-based/env-src it lives beside src/ at the project root.
+        const distDir = (ws.layout === 'flat' || ws.layout === 'env')
+          ? path.join(ws.artifactsRoot, 'dist')
+          : path.join(ws.artifactsRoot, '..', 'dist');
+        resolvedOutputPath = path.join(distDir, `${safeName}-v${safeVersion}.zip`);
+      }
+
+      // Block if output already exists and force is not set
+      if (fs.existsSync(resolvedOutputPath) && !force) {
+        const stat = fs.statSync(resolvedOutputPath);
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                error: 'Output file already exists',
+                existingFile: resolvedOutputPath,
+                existingSizeBytes: stat.size,
+                existingModifiedAt: stat.mtime.toISOString(),
+                hint: 'Pass force: true to overwrite the existing file.',
+              }, null, 2),
+            },
+          ],
+          isError: true,
+        };
       }
 
       try {
@@ -231,7 +260,7 @@ export function registerPackageTools(
 
   // ---- rename_plugin --------------------------------------------------------
 
-  server.tool(
+  loggedTool(server,
     'rename_plugin',
     'Refactor plugin name and all query/permission namespaces (ports rename.rb). Updates the plugin.xml name attribute, replaces oldNamespace prefix in every <query name> value, renames .named_queries.xml and .permission_mappings.xml files that use the old namespace as a filename prefix.',
     {

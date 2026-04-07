@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import fs from 'fs';
+import { loggedTool } from '../lib/logger.js';
 import { WorkspaceContext } from '../lib/workspace.js';
 import { DataDictionary } from '../lib/data-dictionary.js';
 import { readPluginXml, writePluginXml, AccessField } from '../lib/plugin-xml.js';
@@ -25,7 +26,7 @@ function registerSyncAccessRequest(
   dict: DataDictionary,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'sync_access_request',
     'Scan all named query XML files in queries_root for TABLE.FIELD column references (both column patterns and <!-- access: TABLE.FIELD --> comments) and rebuild the access_request block in plugin.xml. Ports sync_plugin_access_request.rb. U_* custom tables are skipped automatically.',
     {
@@ -121,7 +122,7 @@ function registerAddAccessField(
   dict: DataDictionary,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'add_access_field',
     'Add a single TABLE.FIELD entry to the access_request block in plugin.xml. Validates against the data dictionary. Use sync_access_request to rebuild the full block from named queries.',
     {

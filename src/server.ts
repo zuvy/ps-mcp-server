@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 import fs from 'fs';
 
+import { log } from './lib/logger.js';
 import { TagIndex } from './lib/tag-index.js';
 import { DataDictionary } from './lib/data-dictionary.js';
 import { detectWorkspace } from './lib/workspace.js';
@@ -39,20 +40,20 @@ export async function createServer(): Promise<McpServer> {
     throw new Error(`Data dictionary not found: ${csvPath}`);
   }
 
-  process.stderr.write('[ps-mcp] Loading tag index...\n');
+  log('INFO', 'Loading tag index...');
   const tagIndex = await TagIndex.load(tagsDir);
-  process.stderr.write(`[ps-mcp] Loaded ${tagIndex.categories.length} tag categories (${tagIndex.totalTagCount} tags)\n`);
+  log('INFO', `Loaded ${tagIndex.categories.length} tag categories (${tagIndex.totalTagCount} tags)`);
 
-  process.stderr.write('[ps-mcp] Loading data dictionary...\n');
+  log('INFO', 'Loading data dictionary...');
   const dict = DataDictionary.load(csvPath);
-  process.stderr.write(`[ps-mcp] Loaded ${dict.tableCount} tables from data dictionary\n`);
+  log('INFO', `Loaded ${dict.tableCount} tables from data dictionary`);
 
   // --- Detect plugin workspace (best-effort at startup; tools re-check on demand) ---
   const workspace = detectWorkspace();
   if (workspace) {
-    process.stderr.write(`[ps-mcp] Workspace detected: ${workspace.artifactsRoot} (${workspace.layout})\n`);
+    log('INFO', `Workspace detected: ${workspace.artifactsRoot} (${workspace.layout})`);
   } else {
-    process.stderr.write('[ps-mcp] No plugin workspace detected — set PS_PLUGIN_ROOT or open a plugin directory\n');
+    log('WARN', 'No plugin workspace detected — set PS_PLUGIN_ROOT or open a plugin directory');
   }
 
   // --- Create MCP server ---
@@ -90,5 +91,5 @@ export async function startServer(): Promise<void> {
   const server = await createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write('[ps-mcp] Server running on stdio\n');
+  log('INFO', 'Server running on stdio');
 }

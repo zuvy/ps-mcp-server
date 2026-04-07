@@ -122,8 +122,11 @@ function resolveArtifactDirs(root: string): WorkspaceDirs {
   } else if (existsDir(root, 'WEB_ROOT')) {
     dirs.webRoot = path.join(root, 'WEB_ROOT');
   }
-  // pagecataloging lives at the plugin root (same level as plugin.xml), not inside web_root
-  if (existsDir(root, 'pagecataloging')) {
+  // pagecataloging is conventionally inside web_root/ in real PS plugins.
+  // Fall back to the plugin root for non-standard layouts.
+  if (dirs.webRoot && existsDir(dirs.webRoot, 'pagecataloging')) {
+    dirs.pagecataloging = path.join(dirs.webRoot, 'pagecataloging');
+  } else if (existsDir(root, 'pagecataloging')) {
     dirs.pagecataloging = path.join(root, 'pagecataloging');
   }
 

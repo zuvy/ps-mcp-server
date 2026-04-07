@@ -105,9 +105,18 @@ export async function buildPluginZip(
     const archive = archiver('zip', { zlib: { level: 9 } });
 
     let fileCount = 0;
+    const archiverWarnings: string[] = [];
 
     archive.on('entry', () => fileCount++);
     archive.on('error', reject);
+    archive.on('warning', (err) => {
+      // ENOENT warnings are non-fatal; surface others as errors
+      if (err.code === 'ENOENT') {
+        archiverWarnings.push(err.message);
+      } else {
+        reject(err);
+      }
+    });
     output.on('error', reject);
     output.on('close', () => {
       const stats = fs.statSync(outputPath);
@@ -120,12 +129,28 @@ export async function buildPluginZip(
 
     archive.pipe(output);
 
-    // Add all contents of the artifacts root at the archive root level
-    // Exclude version control and tooling directories
-    archive.glob('**/*', {
-      cwd: artifactsRoot,
-      ignore: ['.git/**', '.gitignore', 'node_modules/**', '*.DS_Store', 'Thumbs.db'],
-    });
+    // Build an allowlist of glob patterns covering only the known PS plugin
+    // artifact dirs that actually exist, plus plugin.xml at the root.
+    // Using glob (same as original) preserves the zip entry format that the
+    // PS installer expects — archive.directory() produces different metadata.
+    const knownArtifactDirs = [
+      'queries_root',
+      'permissions_root',
+      'user_schema_root',
+      'web_root',
+      'WEB_ROOT',
+    ];
+
+    const includePatterns: string[] = ['plugin.xml'];
+    for (const dir of knownArtifactDirs) {
+      if (fs.existsSync(path.join(artifactsRoot, dir))) {
+        includePatterns.push(`${dir}/**/*`);
+      }
+    }
+
+    for (const pattern of includePatterns) {
+      archive.glob(pattern, { cwd: artifactsRoot });
+    }
 
     archive.finalize();
   });

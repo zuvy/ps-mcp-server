@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
+import { loggedTool } from '../lib/logger.js';
 import { WorkspaceContext } from '../lib/workspace.js';
 import { HttpOperation, PermissionMapping, writePermissionXml } from '../lib/permission-xml.js';
 
@@ -23,7 +24,7 @@ export function registerPermissionTools(
   server: McpServer,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'scaffold_permission_mapping',
     'Generate a permissions_root XML file that grants PS pages access to named query or table endpoints. Each sourcePage + operation + endpoint triple becomes one <implies> element.',
     {

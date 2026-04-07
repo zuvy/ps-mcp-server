@@ -7,6 +7,39 @@ import { fileURLToPath } from "url";
 import path14 from "path";
 import fs19 from "fs";
 
+// src/lib/logger.ts
+function log(level, message) {
+  try {
+    const ts = (/* @__PURE__ */ new Date()).toISOString();
+    process.stderr.write(`[ps-mcp] ${ts} ${level} ${message}
+`);
+  } catch {
+  }
+}
+function loggedTool(server, name, description, schema, handler) {
+  server.tool(name, description, schema, (async (params) => {
+    const start = Date.now();
+    const paramStr = JSON.stringify(params);
+    const truncated = paramStr.length > 300 ? paramStr.slice(0, 300) + "\u2026" : paramStr;
+    log("INFO", `tool:${name} called params=${truncated}`);
+    try {
+      const result = await handler(params);
+      const ms = Date.now() - start;
+      const isError = result?.isError === true;
+      if (isError) {
+        log("WARN", `tool:${name} returned error result (${ms}ms)`);
+      } else {
+        log("INFO", `tool:${name} ok (${ms}ms)`);
+      }
+      return result;
+    } catch (err) {
+      const ms = Date.now() - start;
+      log("ERROR", `tool:${name} threw ${err} (${ms}ms)`);
+      throw err;
+    }
+  }));
+}
+
 // src/lib/tag-index.ts
 import fs from "fs";
 import path from "path";
@@ -323,7 +356,9 @@ function resolveArtifactDirs(root) {
   } else if (existsDir(root, "WEB_ROOT")) {
     dirs.webRoot = path2.join(root, "WEB_ROOT");
   }
-  if (existsDir(root, "pagecataloging")) {
+  if (dirs.webRoot && existsDir(dirs.webRoot, "pagecataloging")) {
+    dirs.pagecataloging = path2.join(dirs.webRoot, "pagecataloging");
+  } else if (existsDir(root, "pagecataloging")) {
     dirs.pagecataloging = path2.join(root, "pagecataloging");
   }
   return dirs;
@@ -1388,7 +1423,8 @@ function isValidHostname(host) {
   }
 }
 function registerGetPluginInfo(server, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "get_plugin_info",
     "Read and return structured information about the current workspace plugin (name, version, publisher, OAuth level, access_request fields, links, artifact directory counts).",
     {},
@@ -1403,6 +1439,19 @@ function registerGetPluginInfo(server, getWorkspace) {
       }
       const data = readPluginXml(pluginXmlPath);
       const dirs = ws.dirs;
+      const safeName = (data.name || "plugin").replace(/[^a-zA-Z0-9._-]/g, "_");
+      const safeVersion = (data.version || "0.0.0").replace(/[^a-zA-Z0-9._-]/g, "_");
+      const distDir = ws.layout === "flat" ? path7.join(ws.artifactsRoot, "dist") : path7.join(ws.artifactsRoot, "..", "dist");
+      const expectedZipName = `${safeName}-v${safeVersion}.zip`;
+      const expectedZipPath = path7.join(distDir, expectedZipName);
+      let existingDistFiles = [];
+      if (fs10.existsSync(distDir)) {
+        existingDistFiles = fs10.readdirSync(distDir).filter((f) => f.endsWith(".zip")).map((f) => {
+          const fp = path7.join(distDir, f);
+          const stat = fs10.statSync(fp);
+          return { file: f, path: fp, sizeBytes: stat.size, modifiedAt: stat.mtime.toISOString() };
+        }).sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+      }
       const result = {
         name: data.name,
         version: data.version,
@@ -1436,6 +1485,12 @@ function registerGetPluginInfo(server, getWorkspace) {
           userSchemaRoot: dirs.userSchemaRoot ?? null,
           webRoot: dirs.webRoot ?? null,
           pagecataloging: dirs.pagecataloging ?? null
+        },
+        packaging: {
+          expectedOutputPath: expectedZipPath,
+          outputAlreadyExists: fs10.existsSync(expectedZipPath),
+          distDir,
+          existingDistFiles
         }
       };
       return {
@@ -1445,7 +1500,8 @@ function registerGetPluginInfo(server, getWorkspace) {
   );
 }
 function registerScaffoldPlugin(server, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "scaffold_plugin",
     "Generate a new plugin.xml with correct namespace, required elements, and optionally OAuth, autoinstall, registration, and OpenID stubs. Writes to the workspace plugin.xml path.",
     {
@@ -1544,7 +1600,8 @@ function registerScaffoldPlugin(server, getWorkspace) {
   );
 }
 function registerValidatePluginXml(server, getWorkspace, dict) {
-  server.tool(
+  loggedTool(
+    server,
     "validate_plugin_xml",
     "Validate plugin.xml against known PowerSchool rules. Returns structured errors, warnings, and info notices.",
     {},
@@ -1784,8 +1841,16 @@ async function buildPluginZip(artifactsRoot, outputPath) {
     const output = fs11.createWriteStream(outputPath);
     const archive = archiver("zip", { zlib: { level: 9 } });
     let fileCount = 0;
+    const archiverWarnings = [];
     archive.on("entry", () => fileCount++);
     archive.on("error", reject);
+    archive.on("warning", (err) => {
+      if (err.code === "ENOENT") {
+        archiverWarnings.push(err.message);
+      } else {
+        reject(err);
+      }
+    });
     output.on("error", reject);
     output.on("close", () => {
       const stats = fs11.statSync(outputPath);
@@ -1796,10 +1861,22 @@ async function buildPluginZip(artifactsRoot, outputPath) {
       });
     });
     archive.pipe(output);
-    archive.glob("**/*", {
-      cwd: artifactsRoot,
-      ignore: [".git/**", ".gitignore", "node_modules/**", "*.DS_Store", "Thumbs.db"]
-    });
+    const knownArtifactDirs = [
+      "queries_root",
+      "permissions_root",
+      "user_schema_root",
+      "web_root",
+      "WEB_ROOT"
+    ];
+    const includePatterns = ["plugin.xml"];
+    for (const dir of knownArtifactDirs) {
+      if (fs11.existsSync(path8.join(artifactsRoot, dir))) {
+        includePatterns.push(`${dir}/**/*`);
+      }
+    }
+    for (const pattern of includePatterns) {
+      archive.glob(pattern, { cwd: artifactsRoot });
+    }
     archive.finalize();
   });
 }
@@ -1827,7 +1904,8 @@ function bumpSemver(version, part) {
   return `${maj}.${min}.${pat + 1}${rest}`;
 }
 function registerPackageTools(server, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "bump_plugin_version",
     "Update the version attribute in plugin.xml. Port of the release.rb script. Provide either an explicit version string or a bump direction (major/minor/patch).",
     {
@@ -1922,18 +2000,20 @@ function registerPackageTools(server, getWorkspace) {
       };
     }
   );
-  server.tool(
+  loggedTool(
+    server,
     "package_plugin",
     "Build a distributable ZIP from the plugin artifacts root. Runs pre-flight validation (plugin.xml required fields, named query parse errors, duplicate query names) before packaging. Returns the output path and file size.",
     {
       outputPath: z2.string().optional().describe(
         "Where to write the ZIP. Defaults to ./dist/{pluginName}-v{version}.zip relative to the workspace artifacts root."
       ),
-      force: z2.boolean().default(false).describe("Skip pre-flight validation and overwrite existing output file (default: false)")
+      force: z2.boolean().default(false).describe("Overwrite existing output file without prompting (default: false)"),
+      skipValidation: z2.boolean().default(false).describe("Skip pre-flight validation of plugin.xml and named query files (default: false)")
     },
-    async ({ outputPath, force }) => {
+    async ({ outputPath, force, skipValidation }) => {
       const ws = requireWorkspace2(getWorkspace);
-      if (!force) {
+      if (!skipValidation) {
         const validation = validateForPackage(ws.pluginXmlPath, ws.dirs.queriesRoot);
         if (!validation.valid) {
           return {
@@ -1961,7 +2041,26 @@ function registerPackageTools(server, getWorkspace) {
         const pluginData = readPluginXml(ws.pluginXmlPath);
         const safeName = (pluginData.name || "plugin").replace(/[^a-zA-Z0-9._-]/g, "_");
         const safeVersion = (pluginData.version || "0.0.0").replace(/[^a-zA-Z0-9._-]/g, "_");
-        resolvedOutputPath = path9.join(ws.artifactsRoot, "..", "dist", `${safeName}-v${safeVersion}.zip`);
+        const distDir = ws.layout === "flat" || ws.layout === "env" ? path9.join(ws.artifactsRoot, "dist") : path9.join(ws.artifactsRoot, "..", "dist");
+        resolvedOutputPath = path9.join(distDir, `${safeName}-v${safeVersion}.zip`);
+      }
+      if (fs12.existsSync(resolvedOutputPath) && !force) {
+        const stat = fs12.statSync(resolvedOutputPath);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: "Output file already exists",
+                existingFile: resolvedOutputPath,
+                existingSizeBytes: stat.size,
+                existingModifiedAt: stat.mtime.toISOString(),
+                hint: "Pass force: true to overwrite the existing file."
+              }, null, 2)
+            }
+          ],
+          isError: true
+        };
       }
       try {
         const result = await buildPluginZip(ws.artifactsRoot, resolvedOutputPath);
@@ -1996,7 +2095,8 @@ function registerPackageTools(server, getWorkspace) {
       }
     }
   );
-  server.tool(
+  loggedTool(
+    server,
     "rename_plugin",
     "Refactor plugin name and all query/permission namespaces (ports rename.rb). Updates the plugin.xml name attribute, replaces oldNamespace prefix in every <query name> value, renames .named_queries.xml and .permission_mappings.xml files that use the old namespace as a filename prefix.",
     {
@@ -2115,7 +2215,8 @@ var FIELD_SCHEMA = z3.object({
   description: z3.string().optional().describe("Developer comment for this field")
 });
 function registerListCustomTables(server, dict) {
-  server.tool(
+  loggedTool(
+    server,
     "list_custom_tables",
     "Query the data dictionary for all U_-prefixed custom tables known to PowerSchool. Results are informational \u2014 they reflect what is in the data dictionary, not necessarily what is installed on a specific PS instance.",
     {
@@ -2145,7 +2246,8 @@ function registerListCustomTables(server, dict) {
   );
 }
 function registerListDbExtensions(server, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "list_db_extensions",
     "List all user schema extension definitions in the current workspace (user_schema_root/*.xml). Includes the PS HTML reference syntax for each extension.",
     {},
@@ -2193,7 +2295,8 @@ function registerListDbExtensions(server, getWorkspace) {
   );
 }
 function registerAnalyzeSchema(server, dict, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "analyze_schema",
     "Query the data dictionary and workspace user_schema_root to surface existing custom tables and extensions, then recommend whether to extend an existing table or create a new one. Call this before scaffold_db_extension.",
     {
@@ -2292,7 +2395,8 @@ function registerAnalyzeSchema(server, dict, getWorkspace) {
   );
 }
 function registerScaffoldDbExtension(server, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "scaffold_db_extension",
     "Generate a user_schema_root XML file defining a new custom table extension. Returns the PS HTML reference syntax so the developer can immediately use the correct tags in custom pages.",
     {
@@ -2439,7 +2543,8 @@ function registerScaffoldDbExtension(server, getWorkspace) {
   );
 }
 function registerAddFieldToExtension(server, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "add_field_to_extension",
     "Add one or more fields to an existing user_schema_root XML file in the workspace. Use when analyze_schema recommends extending an existing table.",
     {
@@ -2601,7 +2706,8 @@ function validateQueryName(name) {
   return issues;
 }
 function registerScaffoldPowerquery(server, dict, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "scaffold_powerquery",
     "Generate a named_queries.xml file with the correct PS structure. File and query naming follow 5-part recommended conventions by default.",
     {
@@ -2802,7 +2908,8 @@ function registerScaffoldPowerquery(server, dict, getWorkspace) {
   );
 }
 function registerListPowerqueries(server, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "list_powerqueries",
     "List all named query definitions in the current workspace queries_root directory.",
     {},
@@ -2852,7 +2959,8 @@ function registerListPowerqueries(server, getWorkspace) {
   );
 }
 function registerValidateNamedQueries(server, dict, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "validate_named_queries",
     "Validate named query XML files in the workspace. Checks structure, column references against data dictionary, arg/param consistency, and duplicate query names.",
     {
@@ -3090,7 +3198,8 @@ function requireWorkspace5(getWorkspace) {
   return ws;
 }
 function registerSyncAccessRequest(server, dict, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "sync_access_request",
     "Scan all named query XML files in queries_root for TABLE.FIELD column references (both column patterns and <!-- access: TABLE.FIELD --> comments) and rebuild the access_request block in plugin.xml. Ports sync_plugin_access_request.rb. U_* custom tables are skipped automatically.",
     {
@@ -3160,7 +3269,8 @@ function registerSyncAccessRequest(server, dict, getWorkspace) {
   );
 }
 function registerAddAccessField(server, dict, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "add_access_field",
     "Add a single TABLE.FIELD entry to the access_request block in plugin.xml. Validates against the data dictionary. Use sync_access_request to rebuild the full block from named queries.",
     {
@@ -3284,7 +3394,8 @@ function requireWorkspace6(getWorkspace) {
   return ws;
 }
 function registerPermissionTools(server, getWorkspace) {
-  server.tool(
+  loggedTool(
+    server,
     "scaffold_permission_mapping",
     "Generate a permissions_root XML file that grants PS pages access to named query or table endpoints. Each sourcePage + operation + endpoint triple becomes one <implies> element.",
     {
@@ -3396,7 +3507,8 @@ var TOPIC_VALUES = [
   "general"
 ];
 function registerLessonTools(server, lessonsDir) {
-  server.tool(
+  loggedTool(
+    server,
     "record_lesson",
     "Save a lesson learned, coding pattern, gotcha, or solution to a challenge encountered while building PowerSchool plugins. Lessons persist across sessions and are surfaced via ps://lessons/* resources. Use this to capture non-obvious behavior, workarounds, and hard-won insights.",
     {
@@ -3441,7 +3553,8 @@ function registerLessonTools(server, lessonsDir) {
       };
     }
   );
-  server.tool(
+  loggedTool(
+    server,
     "list_lessons",
     "List or search saved lessons learned about PowerSchool plugin development. Returns lesson summaries (no full content). Use get_lesson to read the full content of a specific lesson.",
     {
@@ -3471,7 +3584,8 @@ function registerLessonTools(server, lessonsDir) {
       };
     }
   );
-  server.tool(
+  loggedTool(
+    server,
     "get_lesson",
     "Read the full content of a saved lesson by its ID.",
     {
@@ -3500,7 +3614,8 @@ function registerLessonTools(server, lessonsDir) {
       };
     }
   );
-  server.tool(
+  loggedTool(
+    server,
     "delete_lesson",
     "Delete a saved lesson by its ID.",
     {
@@ -3763,20 +3878,17 @@ async function createServer() {
   if (!fs19.existsSync(csvPath)) {
     throw new Error(`Data dictionary not found: ${csvPath}`);
   }
-  process.stderr.write("[ps-mcp] Loading tag index...\n");
+  log("INFO", "Loading tag index...");
   const tagIndex = await TagIndex.load(tagsDir);
-  process.stderr.write(`[ps-mcp] Loaded ${tagIndex.categories.length} tag categories (${tagIndex.totalTagCount} tags)
-`);
-  process.stderr.write("[ps-mcp] Loading data dictionary...\n");
+  log("INFO", `Loaded ${tagIndex.categories.length} tag categories (${tagIndex.totalTagCount} tags)`);
+  log("INFO", "Loading data dictionary...");
   const dict = DataDictionary.load(csvPath);
-  process.stderr.write(`[ps-mcp] Loaded ${dict.tableCount} tables from data dictionary
-`);
+  log("INFO", `Loaded ${dict.tableCount} tables from data dictionary`);
   const workspace = detectWorkspace();
   if (workspace) {
-    process.stderr.write(`[ps-mcp] Workspace detected: ${workspace.artifactsRoot} (${workspace.layout})
-`);
+    log("INFO", `Workspace detected: ${workspace.artifactsRoot} (${workspace.layout})`);
   } else {
-    process.stderr.write("[ps-mcp] No plugin workspace detected \u2014 set PS_PLUGIN_ROOT or open a plugin directory\n");
+    log("WARN", "No plugin workspace detected \u2014 set PS_PLUGIN_ROOT or open a plugin directory");
   }
   const server = new McpServer4({
     name: "ps-mcp",
@@ -3802,7 +3914,7 @@ async function startServer() {
   const server = await createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write("[ps-mcp] Server running on stdio\n");
+  log("INFO", "Server running on stdio");
 }
 
 // src/index.ts

@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import { loggedTool } from '../lib/logger.js';
 import {
   listLessons,
   searchLessons,
@@ -23,7 +24,7 @@ const TOPIC_VALUES = [
 export function registerLessonTools(server: McpServer, lessonsDir: string): void {
   // ---- record_lesson --------------------------------------------------------
 
-  server.tool(
+  loggedTool(server,
     'record_lesson',
     'Save a lesson learned, coding pattern, gotcha, or solution to a challenge encountered while building PowerSchool plugins. Lessons persist across sessions and are surfaced via ps://lessons/* resources. Use this to capture non-obvious behavior, workarounds, and hard-won insights.',
     {
@@ -84,7 +85,7 @@ export function registerLessonTools(server: McpServer, lessonsDir: string): void
 
   // ---- list_lessons ---------------------------------------------------------
 
-  server.tool(
+  loggedTool(server,
     'list_lessons',
     'List or search saved lessons learned about PowerSchool plugin development. Returns lesson summaries (no full content). Use get_lesson to read the full content of a specific lesson.',
     {
@@ -126,7 +127,7 @@ export function registerLessonTools(server: McpServer, lessonsDir: string): void
 
   // ---- get_lesson -----------------------------------------------------------
 
-  server.tool(
+  loggedTool(server,
     'get_lesson',
     'Read the full content of a saved lesson by its ID.',
     {
@@ -159,7 +160,7 @@ export function registerLessonTools(server: McpServer, lessonsDir: string): void
 
   // ---- delete_lesson --------------------------------------------------------
 
-  server.tool(
+  loggedTool(server,
     'delete_lesson',
     'Delete a saved lesson by its ID.',
     {
