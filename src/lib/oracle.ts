@@ -4,30 +4,22 @@ import { log } from './logger.js';
 // ---- Config ----------------------------------------------------------------
 
 export interface OracleConfig {
-  host?: string;
+  host: string;
   port: number;
-  service?: string;
-  connectString?: string;
+  sid: string;
   user: string;
 }
 
 /** Returns config without password, or null if required env vars are missing. */
 export function getOracleConfig(): OracleConfig | null {
-  const user = process.env.PS_DB_USER;
-  const password = process.env.PS_DB_PASSWORD;
-  if (!user || !password) return null;
+  const user = process.env['DB_USER'];
+  const password = process.env['DB_PASS'];
+  const host = process.env['DB_HOST'];
+  const sid = process.env['DB_SID'];
+  if (!user || !password || !host || !sid) return null;
 
-  const connectString = process.env.PS_DB_CONNECT_STRING;
-  if (connectString) {
-    return { connectString, user, port: 1521 };
-  }
-
-  const host = process.env.PS_DB_HOST;
-  const service = process.env.PS_DB_SERVICE;
-  if (!host || !service) return null;
-
-  const port = parseInt(process.env.PS_DB_PORT ?? '1521', 10);
-  return { host, port, service, user };
+  const port = parseInt(process.env['DB_PORT'] ?? '1521', 10);
+  return { host, port, sid, user };
 }
 
 export function getOracleStatus(): { configured: boolean; config?: OracleConfig } {
@@ -45,13 +37,12 @@ async function getPool(): Promise<oracledb.Pool> {
   const config = getOracleConfig();
   if (!config) {
     throw new Error(
-      'Oracle DB not configured. Set PS_DB_HOST (or PS_DB_CONNECT_STRING), PS_DB_SERVICE, PS_DB_USER, and PS_DB_PASSWORD.',
+      'Oracle DB not configured. Set DB_HOST, DB_SID, DB_USER, and DB_PASS.',
     );
   }
 
-  const password = process.env.PS_DB_PASSWORD!;
-  const connectString =
-    config.connectString ?? `${config.host}:${config.port}/${config.service}`;
+  const password = process.env['DB_PASS']!;
+  const connectString = `${config.host}:${config.port}/${config.sid}`;
 
   log('INFO', `oracle: creating pool connectString=${connectString} user=${config.user}`);
 
@@ -59,8 +50,8 @@ async function getPool(): Promise<oracledb.Pool> {
     user: config.user,
     password,
     connectString,
-    poolMin: parseInt(process.env.PS_DB_POOL_MIN ?? '1', 10),
-    poolMax: parseInt(process.env.PS_DB_POOL_MAX ?? '5', 10),
+    poolMin: 1,
+    poolMax: 5,
     poolIncrement: 1,
   });
 

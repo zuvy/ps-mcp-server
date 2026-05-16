@@ -46,7 +46,7 @@ export function registerOracleTools(
         return err({
           configured: false,
           message: 'Oracle DB not configured.',
-          missingVars: 'Set PS_DB_USER and PS_DB_PASSWORD, and either PS_DB_CONNECT_STRING or PS_DB_HOST + PS_DB_SERVICE.',
+          missingVars: 'Set DB_USER, DB_PASS, DB_HOST, and DB_SID.',
         });
       }
       const start = Date.now();

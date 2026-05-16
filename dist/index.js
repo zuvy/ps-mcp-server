@@ -32,10 +32,10 @@ function loggedTool(server, name, description, schema, handler) {
         log("INFO", `tool:${name} ok (${ms}ms)`);
       }
       return result;
-    } catch (err) {
+    } catch (err4) {
       const ms = Date.now() - start;
-      log("ERROR", `tool:${name} threw ${err} (${ms}ms)`);
-      throw err;
+      log("ERROR", `tool:${name} threw ${err4} (${ms}ms)`);
+      throw err4;
     }
   }));
 }
@@ -128,8 +128,8 @@ var TagIndex = class _TagIndex {
       try {
         const data = JSON.parse(sanitized);
         idx._index.set(category, data);
-      } catch (err) {
-        process.stderr.write(`[ps-mcp] Warning: failed to parse tags/${file}: ${err}
+      } catch (err4) {
+        process.stderr.write(`[ps-mcp] Warning: failed to parse tags/${file}: ${err4}
 `);
       }
     }
@@ -1125,8 +1125,8 @@ function registerCurrentResource(server, getWorkspace) {
       if (fs8.existsSync(ws.pluginXmlPath)) {
         try {
           pluginData = readPluginXml(ws.pluginXmlPath);
-        } catch (err) {
-          pluginData = { error: `plugin.xml parse error: ${err}`, path: ws.pluginXmlPath };
+        } catch (err4) {
+          pluginData = { error: `plugin.xml parse error: ${err4}`, path: ws.pluginXmlPath };
         }
       }
       return {
@@ -1185,13 +1185,13 @@ function registerQueriesResource(server, getWorkspace) {
       let queryFiles = [];
       try {
         queryFiles = readQueryDir(queriesDir);
-      } catch (err) {
+      } catch (err4) {
         return {
           contents: [
             {
               uri: "ps://plugin/queries",
               mimeType: "application/json",
-              text: JSON.stringify({ error: `Failed to read queries: ${err}` })
+              text: JSON.stringify({ error: `Failed to read queries: ${err4}` })
             }
           ]
         };
@@ -1241,13 +1241,13 @@ function registerExtensionsResource(server, getWorkspace) {
       let extensions = [];
       try {
         extensions = readSchemaDir(schemaDir);
-      } catch (err) {
+      } catch (err4) {
         return {
           contents: [
             {
               uri: "ps://plugin/extensions",
               mimeType: "application/json",
-              text: JSON.stringify({ error: `Failed to read extensions: ${err}` })
+              text: JSON.stringify({ error: `Failed to read extensions: ${err4}` })
             }
           ]
         };
@@ -1622,12 +1622,12 @@ function registerValidatePluginXml(server, getWorkspace, dict) {
       let data;
       try {
         data = readPluginXml(pluginXmlPath);
-      } catch (err) {
+      } catch (err4) {
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify({ error: `Failed to parse plugin.xml: ${err}`, path: pluginXmlPath })
+              text: JSON.stringify({ error: `Failed to parse plugin.xml: ${err4}`, path: pluginXmlPath })
             }
           ],
           isError: true
@@ -1795,8 +1795,8 @@ function validateForPackage(pluginXmlPath, queriesDir) {
   let data;
   try {
     data = readPluginXml(pluginXmlPath);
-  } catch (err) {
-    errors.push(`plugin.xml parse error: ${err}`);
+  } catch (err4) {
+    errors.push(`plugin.xml parse error: ${err4}`);
     return { valid: false, errors, warnings };
   }
   const rawXml = fs11.readFileSync(pluginXmlPath, "utf-8");
@@ -1813,8 +1813,8 @@ function validateForPackage(pluginXmlPath, queriesDir) {
     for (const f of xmlFiles) {
       try {
         readQueryDir(queriesDir);
-      } catch (err) {
-        errors.push(`${f}: parse error \u2014 ${err}`);
+      } catch (err4) {
+        errors.push(`${f}: parse error \u2014 ${err4}`);
       }
     }
     try {
@@ -1844,11 +1844,11 @@ async function buildPluginZip(artifactsRoot, outputPath) {
     const archiverWarnings = [];
     archive.on("entry", () => fileCount++);
     archive.on("error", reject);
-    archive.on("warning", (err) => {
-      if (err.code === "ENOENT") {
-        archiverWarnings.push(err.message);
+    archive.on("warning", (err4) => {
+      if (err4.code === "ENOENT") {
+        archiverWarnings.push(err4.message);
       } else {
-        reject(err);
+        reject(err4);
       }
     });
     output.on("error", reject);
@@ -1967,13 +1967,13 @@ function registerPackageTools(server, getWorkspace) {
       } else {
         try {
           newVersion = bumpSemver(oldVersion, params.bump);
-        } catch (err) {
+        } catch (err4) {
           return {
             content: [
               {
                 type: "text",
                 text: JSON.stringify({
-                  error: `${err}`,
+                  error: `${err4}`,
                   currentVersion: oldVersion,
                   hint: "Current version must be in X.Y.Z format to use bump."
                 })
@@ -2082,12 +2082,12 @@ function registerPackageTools(server, getWorkspace) {
             }
           ]
         };
-      } catch (err) {
+      } catch (err4) {
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify({ error: `ZIP build failed: ${err}` })
+              text: JSON.stringify({ error: `ZIP build failed: ${err4}` })
             }
           ],
           isError: true
@@ -3002,7 +3002,7 @@ function registerValidateNamedQueries(server, dict, getWorkspace) {
       for (const fp of filesToCheck) {
         try {
           allQueryFiles.push(readQueryXml(fp));
-        } catch (err) {
+        } catch (err4) {
         }
       }
       const queryNameCount = /* @__PURE__ */ new Map();
@@ -3019,11 +3019,11 @@ function registerValidateNamedQueries(server, dict, getWorkspace) {
         let qf;
         try {
           qf = readQueryXml(fp);
-        } catch (err) {
+        } catch (err4) {
           fileResults.push({
             file: fileName,
             valid: false,
-            errors: [`Failed to parse XML: ${err}`],
+            errors: [`Failed to parse XML: ${err4}`],
             warnings: [],
             info: []
           });
@@ -3646,16 +3646,571 @@ function registerLessonTools(server, lessonsDir) {
   );
 }
 
-// src/prompts/index.ts
+// src/tools/oracle.ts
 import { z as z8 } from "zod";
+
+// src/lib/oracle.ts
+import oracledb from "oracledb";
+function getOracleConfig() {
+  const user = process.env["DB_USER"];
+  const password = process.env["DB_PASS"];
+  const host = process.env["DB_HOST"];
+  const sid = process.env["DB_SID"];
+  if (!user || !password || !host || !sid) return null;
+  const port = parseInt(process.env["DB_PORT"] ?? "1521", 10);
+  return { host, port, sid, user };
+}
+function getOracleStatus() {
+  const config = getOracleConfig();
+  return config ? { configured: true, config } : { configured: false };
+}
+var pool = null;
+async function getPool() {
+  if (pool) return pool;
+  const config = getOracleConfig();
+  if (!config) {
+    throw new Error(
+      "Oracle DB not configured. Set DB_HOST, DB_SID, DB_USER, and DB_PASS."
+    );
+  }
+  const password = process.env["DB_PASS"];
+  const connectString = `${config.host}:${config.port}/${config.sid}`;
+  log("INFO", `oracle: creating pool connectString=${connectString} user=${config.user}`);
+  pool = await oracledb.createPool({
+    user: config.user,
+    password,
+    connectString,
+    poolMin: 1,
+    poolMax: 5,
+    poolIncrement: 1
+  });
+  return pool;
+}
+function translateOraclePlaceholders(sql, args) {
+  const binds = {};
+  const translated = sql.replace(/~\[args\.(\w+)\]/g, (_, name) => {
+    binds[name] = args[name] ?? null;
+    return `:${name}`;
+  });
+  return { sql: translated, binds };
+}
+async function runOracleQuery(sql, binds = {}, limit = 100) {
+  if (!/^\s*SELECT\b/i.test(sql)) {
+    throw new Error("Only SELECT statements are allowed.");
+  }
+  const effectiveLimit = Math.min(Math.max(1, limit), 1e3);
+  const p = await getPool();
+  const connection = await p.getConnection();
+  try {
+    const result = await connection.execute(sql, binds, {
+      maxRows: effectiveLimit,
+      outFormat: oracledb.OUT_FORMAT_ARRAY
+    });
+    const columns = (result.metaData ?? []).map((m) => m.name);
+    const rows = result.rows ?? [];
+    return { columns, rows };
+  } finally {
+    await connection.close();
+  }
+}
+
+// src/tools/oracle.ts
+function requireWorkspace7(getWorkspace) {
+  const ws = getWorkspace();
+  if (!ws) {
+    throw new Error(
+      "No plugin workspace detected. Set PS_PLUGIN_ROOT to the plugin src directory, or open a folder containing plugin.xml."
+    );
+  }
+  return ws;
+}
+function ok(data) {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+}
+function err(data) {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], isError: true };
+}
+function registerOracleTools(server, getWorkspace) {
+  loggedTool(
+    server,
+    "oracle_connection_status",
+    "Test the Oracle (PowerSchool) database connection and return configuration status. Does not expose the password.",
+    {},
+    async () => {
+      const status = getOracleStatus();
+      if (!status.configured) {
+        return err({
+          configured: false,
+          message: "Oracle DB not configured.",
+          missingVars: "Set DB_USER, DB_PASS, DB_HOST, and DB_SID."
+        });
+      }
+      const start = Date.now();
+      try {
+        await runOracleQuery("SELECT 1 FROM DUAL");
+        return ok({ ...status.config, configured: true, connected: true, latencyMs: Date.now() - start });
+      } catch (e) {
+        return err({ ...status.config, configured: true, connected: false, error: String(e) });
+      }
+    }
+  );
+  loggedTool(
+    server,
+    "oracle_run_query",
+    "Run a SELECT statement against the live PowerSchool Oracle database. Only SELECT is allowed.",
+    {
+      sql: z8.string().describe("SELECT statement to execute. Use named binds with :name syntax."),
+      binds: z8.record(z8.unknown()).optional().describe('Named bind variables, e.g. { "studentId": 12345 }'),
+      limit: z8.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)")
+    },
+    async ({ sql, binds = {}, limit }) => {
+      try {
+        const result = await runOracleQuery(sql, binds, limit);
+        return ok({ ...result, rowCount: result.rows.length });
+      } catch (e) {
+        return err({ error: String(e) });
+      }
+    }
+  );
+  loggedTool(
+    server,
+    "oracle_describe_table",
+    "Get live column metadata for a PowerSchool Oracle table from ALL_TAB_COLUMNS.",
+    {
+      tableName: z8.string().describe("Table name (e.g. STUDENTS, U_MY_EXTENSION). Case-insensitive."),
+      owner: z8.string().optional().describe("Schema owner filter (e.g. SISDBA). Omit to search all accessible owners.")
+    },
+    async ({ tableName, owner }) => {
+      try {
+        const ownerClause = owner ? " AND OWNER = :owner" : "";
+        const sql = `SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, OWNER FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = :tableName${ownerClause} ORDER BY COLUMN_ID`;
+        const binds = { tableName: tableName.toUpperCase() };
+        if (owner) binds.owner = owner.toUpperCase();
+        const { columns, rows } = await runOracleQuery(sql, binds, 500);
+        if (rows.length === 0) {
+          return err({ error: `Table '${tableName}' not found or not accessible.` });
+        }
+        const colIdx = Object.fromEntries(columns.map((c, i) => [c, i]));
+        const tableOwner = rows[0][colIdx["OWNER"]];
+        const fields = rows.map((r) => ({
+          name: r[colIdx["COLUMN_NAME"]],
+          type: r[colIdx["DATA_TYPE"]],
+          length: r[colIdx["DATA_LENGTH"]],
+          precision: r[colIdx["DATA_PRECISION"]],
+          scale: r[colIdx["DATA_SCALE"]],
+          nullable: r[colIdx["NULLABLE"]] === "Y"
+        }));
+        return ok({ table: tableName.toUpperCase(), owner: tableOwner, columns: fields });
+      } catch (e) {
+        return err({ error: String(e) });
+      }
+    }
+  );
+  loggedTool(
+    server,
+    "oracle_list_tables",
+    "List Oracle tables accessible to the DB user, with optional prefix filter. Useful for finding custom U_ plugin tables.",
+    {
+      prefix: z8.string().optional().describe('Filter by table name prefix (e.g. "U_" for custom plugin tables). Omit for all tables.'),
+      owner: z8.string().optional().describe('Filter by schema owner (e.g. "SISDBA"). Omit to search all accessible owners.')
+    },
+    async ({ prefix, owner }) => {
+      try {
+        const ownerClause = owner ? " AND OWNER = :owner" : "";
+        const sql = `SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE TABLE_NAME LIKE :prefix || '%'${ownerClause} ORDER BY OWNER, TABLE_NAME`;
+        const binds = { prefix: (prefix ?? "").toUpperCase() };
+        if (owner) binds.owner = owner.toUpperCase();
+        const { rows } = await runOracleQuery(sql, binds, 500);
+        const tables = rows.map((r) => ({ owner: r[0], name: r[1] }));
+        return ok({ tables, count: tables.length });
+      } catch (e) {
+        return err({ error: String(e) });
+      }
+    }
+  );
+  loggedTool(
+    server,
+    "oracle_run_named_query",
+    "Find a named query in the workspace named_queries.xml files and execute it against the live PowerSchool Oracle database. Translates ~[args.x] placeholders to Oracle :x binds.",
+    {
+      queryName: z8.string().describe("The name= attribute of the query in named_queries.xml (e.g. com.example.plugin.myQuery)"),
+      args: z8.record(z8.unknown()).optional().describe('Argument values matching the <args> definition in the query, e.g. { "studentId": 12345 }'),
+      limit: z8.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)")
+    },
+    async ({ queryName, args = {}, limit }) => {
+      try {
+        const ws = requireWorkspace7(getWorkspace);
+        if (!ws.dirs.queriesRoot) {
+          return err({ error: "No queries_root directory found in this workspace." });
+        }
+        const queryFiles = readQueryDir(ws.dirs.queriesRoot);
+        let found = null;
+        for (const qf of queryFiles) {
+          const match = qf.queries.find((q) => q.name === queryName);
+          if (match) {
+            found = match;
+            break;
+          }
+        }
+        if (!found) {
+          return err({ error: `Named query '${queryName}' not found in queries_root.` });
+        }
+        if (!found.sql) {
+          return err({ error: `Named query '${queryName}' has no SQL content.` });
+        }
+        const { sql: translatedSql, binds } = translateOraclePlaceholders(found.sql, args);
+        const result = await runOracleQuery(translatedSql, binds, limit);
+        return ok({ queryName, ...result, rowCount: result.rows.length });
+      } catch (e) {
+        return err({ error: String(e) });
+      }
+    }
+  );
+}
+
+// src/tools/postgres.ts
+import { z as z9 } from "zod";
+
+// src/lib/pg.ts
+import { Pool } from "pg";
+function getPgConfig() {
+  return {
+    database: process.env.PS_PG_DATABASE ?? "tpsdata_development",
+    ...process.env.PS_PG_USER ? { user: process.env.PS_PG_USER } : {},
+    ...process.env.PS_PG_HOST ? { host: process.env.PS_PG_HOST } : {},
+    port: parseInt(process.env.PS_PG_PORT ?? "5432", 10)
+  };
+}
+function getPgStatus() {
+  return { configured: true, config: getPgConfig() };
+}
+var pool2 = null;
+function getPool2() {
+  if (pool2) return pool2;
+  const config = getPgConfig();
+  const poolConfig = {
+    database: config.database,
+    port: config.port,
+    max: parseInt(process.env.PS_PG_POOL_MAX ?? "5", 10),
+    ...config.user ? { user: config.user } : {},
+    ...config.host ? { host: config.host } : {},
+    ...process.env.PS_PG_PASSWORD ? { password: process.env.PS_PG_PASSWORD } : {}
+  };
+  pool2 = new Pool(poolConfig);
+  return pool2;
+}
+function applyLimit(sql, limit) {
+  if (/\bLIMIT\s+\d+/i.test(sql)) return sql;
+  return `${sql.trimEnd()} LIMIT ${limit}`;
+}
+async function runPgQuery(sql, params = [], limit = 100) {
+  if (!/^\s*SELECT\b/i.test(sql)) {
+    throw new Error("Only SELECT statements are allowed.");
+  }
+  const effectiveLimit = Math.min(Math.max(1, limit), 1e3);
+  const limitedSql = applyLimit(sql, effectiveLimit);
+  const p = getPool2();
+  const result = await p.query(limitedSql, params.length > 0 ? params : void 0);
+  const columns = result.fields.map((f) => f.name);
+  const rows = result.rows.map((row) => columns.map((col) => row[col]));
+  return { columns, rows };
+}
+
+// src/tools/postgres.ts
+function ok2(data) {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+}
+function err2(data) {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], isError: true };
+}
+function registerPostgresTools(server) {
+  loggedTool(
+    server,
+    "pg_connection_status",
+    "Test the local PostgreSQL (tpsdata_development) connection and return configuration. Does not expose the password.",
+    {},
+    async () => {
+      const status = getPgStatus();
+      const start = Date.now();
+      try {
+        await runPgQuery("SELECT 1");
+        return ok2({ ...status.config, configured: true, connected: true, latencyMs: Date.now() - start });
+      } catch (e) {
+        return err2({ ...status.config, configured: true, connected: false, error: String(e) });
+      }
+    }
+  );
+  loggedTool(
+    server,
+    "pg_run_query",
+    'Run a SELECT statement against the local tpsdata_development PostgreSQL database. Only SELECT is allowed. Use $1, $2, \u2026 for positional parameters. Table names containing "/" (e.g. "mastery_connect/scores") must be double-quoted in SQL.',
+    {
+      sql: z9.string().describe("SELECT statement to execute. Use $1, $2, \u2026 for positional parameters."),
+      params: z9.array(z9.unknown()).optional().describe("Positional parameter values matching $1, $2, \u2026 in the SQL"),
+      limit: z9.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)")
+    },
+    async ({ sql, params = [], limit }) => {
+      try {
+        const result = await runPgQuery(sql, params, limit);
+        return ok2({ ...result, rowCount: result.rows.length });
+      } catch (e) {
+        return err2({ error: String(e) });
+      }
+    }
+  );
+  loggedTool(
+    server,
+    "pg_describe_table",
+    "Get column metadata for a tpsdata_development table from information_schema.columns.",
+    {
+      tableName: z9.string().describe('Table name (e.g. "students", "daily_attendances_2025"). Use the exact name \u2014 case-sensitive.'),
+      schema: z9.string().default("public").describe("Schema name (default: public)")
+    },
+    async ({ tableName, schema }) => {
+      try {
+        const sql = `
+          SELECT column_name, data_type, character_maximum_length, is_nullable, column_default
+          FROM information_schema.columns
+          WHERE table_name = $1 AND table_schema = $2
+          ORDER BY ordinal_position`;
+        const { columns, rows } = await runPgQuery(sql, [tableName, schema], 500);
+        if (rows.length === 0) {
+          return err2({ error: `Table '${tableName}' not found in schema '${schema}'.` });
+        }
+        const colIdx = Object.fromEntries(columns.map((c, i) => [c, i]));
+        const fields = rows.map((r) => ({
+          name: r[colIdx["column_name"]],
+          type: r[colIdx["data_type"]],
+          maxLength: r[colIdx["character_maximum_length"]],
+          nullable: r[colIdx["is_nullable"]] === "YES",
+          default: r[colIdx["column_default"]]
+        }));
+        return ok2({ table: tableName, schema, columns: fields });
+      } catch (e) {
+        return err2({ error: String(e) });
+      }
+    }
+  );
+  loggedTool(
+    server,
+    "pg_list_tables",
+    'List tables in the tpsdata_development PostgreSQL database. Some table names contain "/" (e.g. "mastery_connect/scores") and require double-quoting in SQL.',
+    {
+      search: z9.string().optional().describe('Case-insensitive substring filter on table name (e.g. "attendance" or "mastery")'),
+      schema: z9.string().default("public").describe("Schema name (default: public)")
+    },
+    async ({ search, schema }) => {
+      try {
+        const sql = search ? `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' AND table_name ILIKE $2 ORDER BY table_name` : `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name`;
+        const params = search ? [schema, `%${search}%`] : [schema];
+        const { rows } = await runPgQuery(sql, params, 500);
+        const tables = rows.map((r) => r[0]);
+        return ok2({ schema, tables, count: tables.length });
+      } catch (e) {
+        return err2({ error: String(e) });
+      }
+    }
+  );
+}
+
+// src/lib/ps-server.ts
+import https from "https";
+import { URL as URL2 } from "url";
+function getPsServerConfig() {
+  const url = process.env["PSTEST_URI"];
+  const user = process.env["PS_USER"];
+  const password = process.env["PS_PASS"];
+  if (!url || !user || !password) return null;
+  return { url: url.replace(/\/$/, ""), user };
+}
+function getPsServerStatus() {
+  const config = getPsServerConfig();
+  return config ? { configured: true, config } : { configured: false };
+}
+function parseCookies(jar, headers) {
+  if (!headers) return;
+  const list = Array.isArray(headers) ? headers : [headers];
+  for (const cookie of list) {
+    const [nameValue] = cookie.split(";");
+    const eqIdx = nameValue.indexOf("=");
+    if (eqIdx > 0) {
+      jar.set(nameValue.slice(0, eqIdx).trim(), nameValue.slice(eqIdx + 1).trim());
+    }
+  }
+}
+function cookieHeader(jar) {
+  return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+}
+function get(url, jar) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        port: 443,
+        path: url.pathname + url.search,
+        method: "GET",
+        rejectUnauthorized: false,
+        headers: {
+          "User-Agent": "ps-mcp-server/0.1.0",
+          Accept: "application/json",
+          Cookie: cookieHeader(jar)
+        }
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk) => body += chunk);
+        res.on(
+          "end",
+          () => resolve({
+            status: res.statusCode ?? 0,
+            setCookies: res.headers["set-cookie"] ?? [],
+            body
+          })
+        );
+      }
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+function post(url, jar, body) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname: url.hostname,
+        port: 443,
+        path: url.pathname + url.search,
+        method: "POST",
+        rejectUnauthorized: false,
+        headers: {
+          "User-Agent": "ps-mcp-server/0.1.0",
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": Buffer.byteLength(body),
+          Cookie: cookieHeader(jar),
+          Referer: `${url.origin}/admin/pw.html`
+        }
+      },
+      (res) => {
+        res.resume();
+        res.on(
+          "end",
+          () => resolve({
+            status: res.statusCode ?? 0,
+            setCookies: res.headers["set-cookie"] ?? []
+          })
+        );
+      }
+    );
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+async function authenticate(baseUrl, user, password) {
+  const jar = /* @__PURE__ */ new Map();
+  const base = new URL2(baseUrl);
+  const loginPage = await get(new URL2("/admin/pw.html", base), jar);
+  parseCookies(jar, loginPage.setCookies);
+  const postData = new URLSearchParams({
+    username: user,
+    password,
+    ldappassword: password,
+    request_locale: "en_US"
+  }).toString();
+  const loginResp = await post(new URL2("/admin/home.html", base), jar, postData);
+  parseCookies(jar, loginResp.setCookies);
+  if (loginResp.status !== 200 && loginResp.status !== 302) {
+    throw new Error(
+      `PowerSchool authentication failed (HTTP ${loginResp.status}). Check PS_SERVER_USER and PS_SERVER_PASSWORD.`
+    );
+  }
+  return jar;
+}
+async function fetchJson(baseUrl, path15, jar) {
+  const resp = await get(new URL2(path15, baseUrl), jar);
+  if (resp.status !== 200) {
+    throw new Error(`GET ${path15} returned HTTP ${resp.status}`);
+  }
+  try {
+    return JSON.parse(resp.body);
+  } catch {
+    throw new Error(`GET ${path15} returned non-JSON: ${resp.body.slice(0, 200)}`);
+  }
+}
+async function fetchPsServerContext(baseUrl, user, password) {
+  const jar = await authenticate(baseUrl, user, password);
+  const [serverInfo, installedPlugins, schemaExtensions, queryRoots] = await Promise.all([
+    fetchJson(
+      baseUrl,
+      "/vscode_cpm/ps_server_info.json",
+      jar
+    ),
+    fetchJson(
+      baseUrl,
+      "/vscode_cpm/ps_installed_plugins.json",
+      jar
+    ),
+    fetchJson(baseUrl, "/vscode_cpm/ps_custom_tables.json", jar),
+    fetchJson(
+      baseUrl,
+      "/vscode_cpm/ps_named_queries.json",
+      jar
+    )
+  ]);
+  return {
+    psVersion: serverInfo.psVersion,
+    timestamp: serverInfo.timestamp,
+    installedPlugins,
+    schemaExtensions,
+    queryRoots
+  };
+}
+
+// src/tools/server.ts
+function ok3(data) {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
+}
+function err3(data) {
+  return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }], isError: true };
+}
+function registerServerTools(server) {
+  loggedTool(
+    server,
+    "ps_server_context",
+    "Fetch live context from the running PowerSchool server via the companion plugin endpoints. Returns PS version, installed plugins, custom schema tables (U_ prefix), and named query namespaces. Requires PSTEST_URI, PS_USER, and PS_PASS env vars.",
+    {},
+    async () => {
+      const status = getPsServerStatus();
+      if (!status.configured) {
+        return err3({
+          configured: false,
+          message: "PowerSchool server not configured.",
+          missingVars: "Set PSTEST_URI, PS_USER, and PS_PASS in the workspace .mcp.json env block."
+        });
+      }
+      const url = process.env["PSTEST_URI"];
+      const user = process.env["PS_USER"];
+      const password = process.env["PS_PASS"];
+      try {
+        const context = await fetchPsServerContext(url, user, password);
+        return ok3(context);
+      } catch (e) {
+        return err3({ error: String(e) });
+      }
+    }
+  );
+}
+
+// src/prompts/index.ts
+import { z as z10 } from "zod";
 function registerPrompts(server) {
   server.prompt(
     "design_powerquery",
     "Design a PowerSchool named query (PowerQuery) for a described data need. Guides you through naming conventions, column references, parameter binding, and produces a ready-to-use scaffold_powerquery tool call.",
     {
-      description: z8.string().describe('What data is needed \u2014 e.g. "list active students with their homeroom teacher name"'),
-      targetTable: z8.string().describe('Primary PS table to query \u2014 e.g. "STUDENTS"'),
-      psVersion: z8.string().optional().describe("PowerSchool version (optional) \u2014 affects available columns and syntax")
+      description: z10.string().describe('What data is needed \u2014 e.g. "list active students with their homeroom teacher name"'),
+      targetTable: z10.string().describe('Primary PS table to query \u2014 e.g. "STUDENTS"'),
+      psVersion: z10.string().optional().describe("PowerSchool version (optional) \u2014 affects available columns and syntax")
     },
     ({ description, targetTable, psVersion }) => ({
       messages: [
@@ -3717,8 +4272,8 @@ Please proceed with designing the query for: **${description}**`
     "design_db_extension",
     "Design a PowerSchool database extension (user_schema_root XML). Determines whether to extend an existing table or create a new one, then guides you to the right scaffold or add-field tool call.",
     {
-      description: z8.string().describe('What data to capture \u2014 e.g. "track student laptop assignments"'),
-      coreTable: z8.string().optional().describe('PS core table to extend, if known \u2014 e.g. "Students". Omit for independent tables.')
+      description: z10.string().describe('What data to capture \u2014 e.g. "track student laptop assignments"'),
+      coreTable: z10.string().optional().describe('PS core table to extend, if known \u2014 e.g. "Students". Omit for independent tables.')
     },
     ({ description, coreTable }) => ({
       messages: [
@@ -3777,7 +4332,7 @@ Please proceed by calling \`analyze_schema\` for: **${description}**${coreTable 
     "explain_pshtml_tag",
     "Explain a PowerSchool HTML tag pattern, its syntax, and usage. Looks up the tag in the ps-mcp tag reference and provides a plain-language explanation with examples.",
     {
-      tagPattern: z8.string().describe('The tag or pattern to explain \u2014 e.g. "~[tlist_sql", "~(*powerquery", "~[DirectTable.Select"')
+      tagPattern: z10.string().describe('The tag or pattern to explain \u2014 e.g. "~[tlist_sql", "~(*powerquery", "~[DirectTable.Select"')
     },
     ({ tagPattern }) => ({
       messages: [
@@ -3810,9 +4365,9 @@ Please look up and explain: \`${tagPattern}\``
     "design_permission_mapping",
     "Design a PowerSchool permission mapping file that grants PS pages access to named query or table endpoints. Produces a ready-to-use scaffold_permission_mapping tool call.",
     {
-      tableName: z8.string().describe('The endpoint table or query to grant access to \u2014 e.g. "U_Laptops" or "com.example.data.students.active"'),
-      operations: z8.string().describe('Comma-separated HTTP operations to allow \u2014 e.g. "get,post" or "get,post,put,delete"'),
-      sourcePages: z8.string().describe('Comma-separated PS page paths that need access \u2014 e.g. "/admin/students/student_ids.html,/guardian/portal.html"')
+      tableName: z10.string().describe('The endpoint table or query to grant access to \u2014 e.g. "U_Laptops" or "com.example.data.students.active"'),
+      operations: z10.string().describe('Comma-separated HTTP operations to allow \u2014 e.g. "get,post" or "get,post,put,delete"'),
+      sourcePages: z10.string().describe('Comma-separated PS page paths that need access \u2014 e.g. "/admin/students/student_ids.html,/guardian/portal.html"')
     },
     ({ tableName, operations, sourcePages }) => ({
       messages: [
@@ -3907,6 +4462,9 @@ async function createServer() {
   registerAccessTools(server, dict, getWorkspace);
   registerPermissionTools(server, getWorkspace);
   registerLessonTools(server, LESSONS_DIR);
+  registerOracleTools(server, getWorkspace);
+  registerPostgresTools(server);
+  registerServerTools(server);
   registerPrompts(server);
   return server;
 }
@@ -3918,8 +4476,8 @@ async function startServer() {
 }
 
 // src/index.ts
-startServer().catch((err) => {
-  process.stderr.write(`[ps-mcp] Fatal error: ${err}
+startServer().catch((err4) => {
+  process.stderr.write(`[ps-mcp] Fatal error: ${err4}
 `);
   process.exit(1);
 });
