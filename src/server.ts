@@ -20,6 +20,9 @@ import { registerQueryTools } from './tools/queries.js';
 import { registerAccessTools } from './tools/access.js';
 import { registerPermissionTools } from './tools/permissions.js';
 import { registerLessonTools } from './tools/lessons.js';
+import { registerOracleTools } from './tools/oracle.js';
+import { registerPostgresTools } from './tools/postgres.js';
+import { registerServerTools } from './tools/server.js';
 import { registerPrompts } from './prompts/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -80,6 +83,9 @@ export async function createServer(): Promise<McpServer> {
   registerAccessTools(server, dict, getWorkspace);
   registerPermissionTools(server, getWorkspace);
   registerLessonTools(server, LESSONS_DIR);
+  registerOracleTools(server, getWorkspace);
+  registerPostgresTools(server);
+  registerServerTools(server);
 
   // --- Register prompts ---
   registerPrompts(server);
