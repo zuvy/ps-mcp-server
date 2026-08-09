@@ -145,13 +145,13 @@ export function registerPackageTools(
 
   server.tool(
     'package_plugin',
-    'Build a distributable ZIP from the plugin artifacts root. Runs pre-flight validation (plugin.xml required fields, named query parse errors, duplicate query names) before packaging. Returns the output path and file size.',
+    'Build a distributable ZIP from the plugin artifacts root. Runs pre-flight validation (plugin.xml required fields, named query parse errors, duplicate query names) before packaging. Returns the output path and file size. The default output directory can be overridden by setting the PS_DIST_PATH environment variable; otherwise the ZIP is placed in a dist/ folder inside the artifacts root (at the same level as web_root).',
     {
       outputPath: z
         .string()
         .optional()
         .describe(
-          'Where to write the ZIP. Defaults to ./dist/{pluginName}-v{version}.zip relative to the workspace artifacts root.',
+          'Where to write the ZIP. Overrides PS_DIST_PATH. Defaults to {artifactsRoot}/dist/{pluginName}-v{version}.zip (or PS_DIST_PATH/{pluginName}-v{version}.zip if set).',
         ),
       force: z
         .boolean()
@@ -187,12 +187,16 @@ export function registerPackageTools(
       }
 
       // Determine output path
+      // Priority: explicit outputPath arg > PS_DIST_PATH env var > dist/ inside artifactsRoot
       let resolvedOutputPath = outputPath;
       if (!resolvedOutputPath) {
         const pluginData = readPluginXml(ws.pluginXmlPath);
         const safeName = (pluginData.name || 'plugin').replace(/[^a-zA-Z0-9._-]/g, '_');
         const safeVersion = (pluginData.version || '0.0.0').replace(/[^a-zA-Z0-9._-]/g, '_');
-        resolvedOutputPath = path.join(ws.artifactsRoot, '..', 'dist', `${safeName}-v${safeVersion}.zip`);
+        const distDir = process.env['PS_DIST_PATH']
+          ? path.resolve(process.env['PS_DIST_PATH'])
+          : path.join(ws.artifactsRoot, 'dist');
+        resolvedOutputPath = path.join(distDir, `${safeName}-v${safeVersion}.zip`);
       }
 
       try {
