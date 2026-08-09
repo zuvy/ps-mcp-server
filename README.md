@@ -16,7 +16,7 @@ ps-mcp exposes three categories of capability to an MCP client:
 | `scaffold_plugin` | Generate a new plugin.xml with all optional blocks |
 | `validate_plugin_xml` | Validate plugin.xml against PS requirements |
 | `bump_plugin_version` | Increment major/minor/patch or set an explicit version |
-| `package_plugin` | Pre-flight validate and build a distributable ZIP |
+| `package_plugin` | Pre-flight validate and build a distributable ZIP (output goes to `dist/` inside the artifacts root, or to `PS_DIST_PATH` if set) |
 | `rename_plugin` | Refactor plugin name and all query/permission namespaces (ports `rename.rb`) |
 | `scaffold_powerquery` | Generate a named query XML file with correct column refs |
 | `list_powerqueries` | List all named queries in the workspace |
@@ -136,13 +136,61 @@ Set `PS_PLUGIN_ROOT` to the project root directory (the VS Code workspace folder
 
 ### Option C — Claude Code CLI
 
-Add to `~/.claude/settings.json` under `mcpServers`, or use the VS Code `.vscode/mcp.json` approach above.
+> **Do not put `mcpServers` in `~/.claude/settings.json`.** Claude Code does not read MCP
+> server definitions from that file. Entries added there are ignored silently — no warning,
+> and the server simply never appears in `claude mcp list`.
+
+Register with the CLI instead:
+
+```bash
+# available in every project (recommended — see note on PS_PLUGIN_ROOT below)
+claude mcp add ps-mcp --scope user -- node /path/to/ps-mcp/dist/index.js
+
+# or scoped to the current plugin project only
+claude mcp add ps-mcp -- node /path/to/ps-mcp/dist/index.js
+```
+
+To share the configuration with your team, use `--scope project`, which writes a `.mcp.json`
+at the repo root that you can commit:
+
+```json
+{
+  "mcpServers": {
+    "ps-mcp": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/path/to/ps-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+**`PS_PLUGIN_ROOT` is optional here.** Claude Code runs the server with your working directory,
+and workspace detection walks up from `cwd` looking for `plugin.xml` (see
+[Workspace detection](#workspace-detection)). A single `--scope user` registration therefore
+follows you across every plugin repo without per-project configuration. Set `PS_PLUGIN_ROOT`
+only to pin the server to one fixed project regardless of where you launch it.
+
+Verify with:
+
+```bash
+claude mcp list          # should show: ps-mcp ... ✔ Connected
+```
 
 ---
 
 ## Workspace detection
 
 The server locates your plugin project automatically on every tool call using this priority order:
+
+### Environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `PS_PLUGIN_ROOT` | Plugin project root (or artifacts root). Used for workspace detection. |
+| `PS_DIST_PATH` | Default output directory for `package_plugin`. Optional — see [Packaging output](#packaging-output). |
+
+---
 
 ### 1. `PS_PLUGIN_ROOT` env var (highest priority)
 
@@ -186,6 +234,25 @@ Once `plugin.xml` is found, the server also discovers any artifact subdirectorie
 
 If no workspace is detected, tools that require one will return a clear error. Read-only tools (tag reference, data dictionary, docs, lessons) work without a workspace.
 
+### Packaging output
+
+`package_plugin` resolves the output ZIP path using this priority order:
+
+1. **`outputPath` tool argument** — explicit per-call path (highest priority)
+2. **`PS_DIST_PATH` env var** — set this to any absolute directory path to use it as the default output directory across all calls
+3. **`dist/` inside the artifacts root** — created automatically alongside `web_root`, `queries_root`, etc.
+
+To set a project-wide default, add `PS_DIST_PATH` to the `env` block in your MCP config:
+
+```json
+"env": {
+  "PS_PLUGIN_ROOT": "${workspaceFolder}",
+  "PS_DIST_PATH": "/absolute/path/to/output"
+}
+```
+
+If neither `PS_DIST_PATH` nor an explicit `outputPath` is provided, the ZIP is written to `{artifactsRoot}/dist/{pluginName}-v{version}.zip`. The `dist/` directory is created automatically if it does not exist.
+
 ---
 
 ## Plugin project layout
@@ -203,7 +270,9 @@ my-plugin/
     │   └── U_Laptops.xml
     ├── permissions_root/
     │   └── com.example.data.students.permission_mappings.xml
-    └── web_root/
+    ├── web_root/
+    └── dist/                  ← package_plugin output (auto-created)
+        └── MyPlugin-v1.0.0.zip
 ```
 
 **flat** (artifacts directly at root):
@@ -212,7 +281,9 @@ my-plugin/
 ├── plugin.xml
 ├── queries_root/
 ├── user_schema_root/
-└── permissions_root/
+├── permissions_root/
+└── dist/                      ← package_plugin output (auto-created)
+    └── MyPlugin-v1.0.0.zip
 ```
 
 ---
