@@ -70,6 +70,8 @@ The server loads these assets at startup from `.docs/`:
 - **Tag reference** (`.docs/tags/*.json`) — PS HTML tag documentation covering ~37 categories (tlist_sql, powerquery, frn, if/logic, dates, grades, gpa, contacts, etc.).
 - **Documentation** (`.docs/*.md`) — 62+ markdown files covering PS customization, the Data Access API, OAuth, SSO, DB extensions, named queries, permissions, and more.
 
+> **Note: `.docs/` is not in this repository.** The reference material in `.docs/` contains proprietary PowerSchool content. It is licensed for use by PowerSchool Support Technical Users but may not be shared, so it is deliberately git-ignored and must never be committed or redistributed. To run the server with full reference data, get these files through your own PowerSchool support channels and place them in `.docs/` at the project root.
+
 ---
 
 ## Installation
