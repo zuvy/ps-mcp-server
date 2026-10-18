@@ -1,7 +1,9 @@
 import https from 'https';
 import { URL } from 'url';
+import { PS_SERVERS, PsServerName, DEFAULT_PS_SERVER } from './ps-servers.js';
 
 export interface PsServerConfig {
+  server: PsServerName;
   url: string;
   user: string;
 }
@@ -14,16 +16,16 @@ export interface PsServerContext {
   queryRoots: Array<{ plugin: string; namespace: string }>;
 }
 
-export function getPsServerConfig(): PsServerConfig | null {
-  const url = process.env['PSTEST_URI'];
+export function getPsServerConfig(server: PsServerName = DEFAULT_PS_SERVER): PsServerConfig | null {
+  const url = process.env[PS_SERVERS[server].uriVar];
   const user = process.env['PS_USER'];
   const password = process.env['PS_PASS'];
   if (!url || !user || !password) return null;
-  return { url: url.replace(/\/$/, ''), user };
+  return { server, url: url.replace(/\/$/, ''), user };
 }
 
-export function getPsServerStatus(): { configured: boolean; config?: PsServerConfig } {
-  const config = getPsServerConfig();
+export function getPsServerStatus(server: PsServerName = DEFAULT_PS_SERVER): { configured: boolean; config?: PsServerConfig } {
+  const config = getPsServerConfig(server);
   return config ? { configured: true, config } : { configured: false };
 }
 

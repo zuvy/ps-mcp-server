@@ -31,21 +31,21 @@ describe('getOracleConfig', () => {
   beforeEach(() => {
     delete process.env['DB_USER'];
     delete process.env['DB_PASS'];
-    delete process.env['DB_HOST'];
+    delete process.env['PSTEST_HOST'];
     delete process.env['DB_SID'];
     delete process.env['DB_PORT'];
   });
 
   it('returns null when user is missing', () => {
     process.env['DB_PASS'] = 'secret';
-    process.env['DB_HOST'] = 'myhost';
+    process.env['PSTEST_HOST'] = 'myhost';
     process.env['DB_SID'] = 'PSDB';
     expect(getOracleConfig()).toBeNull();
   });
 
   it('returns null when password is missing', () => {
     process.env['DB_USER'] = 'dbuser';
-    process.env['DB_HOST'] = 'myhost';
+    process.env['PSTEST_HOST'] = 'myhost';
     process.env['DB_SID'] = 'PSDB';
     expect(getOracleConfig()).toBeNull();
   });
@@ -60,14 +60,14 @@ describe('getOracleConfig', () => {
   it('returns null when SID is missing', () => {
     process.env['DB_USER'] = 'dbuser';
     process.env['DB_PASS'] = 'secret';
-    process.env['DB_HOST'] = 'myhost';
+    process.env['PSTEST_HOST'] = 'myhost';
     expect(getOracleConfig()).toBeNull();
   });
 
   it('returns config when all required vars are set', () => {
     process.env['DB_USER'] = 'dbuser';
     process.env['DB_PASS'] = 'secret';
-    process.env['DB_HOST'] = 'myhost';
+    process.env['PSTEST_HOST'] = 'myhost';
     process.env['DB_SID'] = 'PSDB';
     const config = getOracleConfig();
     expect(config).not.toBeNull();
@@ -80,11 +80,23 @@ describe('getOracleConfig', () => {
   it('uses custom port when DB_PORT is set', () => {
     process.env['DB_USER'] = 'dbuser';
     process.env['DB_PASS'] = 'secret';
-    process.env['DB_HOST'] = 'myhost';
+    process.env['PSTEST_HOST'] = 'myhost';
     process.env['DB_SID'] = 'PSDB';
     process.env['DB_PORT'] = '1522';
     const config = getOracleConfig();
     expect(config!.port).toBe(1522);
+  });
+
+  it('defaults to pstest and reads the host for the requested server', () => {
+    process.env['DB_USER'] = 'dbuser';
+    process.env['DB_PASS'] = 'secret';
+    process.env['DB_SID'] = 'PSDB';
+    process.env['PSTEST_HOST'] = 'testhost';
+    process.env['PROD_HOST'] = 'prodhost';
+    expect(getOracleConfig()!.server).toBe('pstest');
+    expect(getOracleConfig('psprod')!.host).toBe('prodhost');
+    expect(getOracleConfig('psdev')).toBeNull();
+    delete process.env['PROD_HOST'];
   });
 });
 
@@ -94,14 +106,14 @@ describe('getOracleStatus', () => {
   afterEach(() => {
     delete process.env['DB_USER'];
     delete process.env['DB_PASS'];
-    delete process.env['DB_HOST'];
+    delete process.env['PSTEST_HOST'];
     delete process.env['DB_SID'];
   });
 
   it('never includes a password field', () => {
     process.env['DB_USER'] = 'dbuser';
     process.env['DB_PASS'] = 'supersecret';
-    process.env['DB_HOST'] = 'myhost';
+    process.env['PSTEST_HOST'] = 'myhost';
     process.env['DB_SID'] = 'PSDB';
     const status = getOracleStatus();
     expect(JSON.stringify(status)).not.toContain('supersecret');
@@ -137,7 +149,7 @@ describe('runOracleQuery SELECT guard', () => {
   it('accepts a SELECT statement', async () => {
     process.env['DB_USER'] = 'dbuser';
     process.env['DB_PASS'] = 'secret';
-    process.env['DB_HOST'] = 'myhost';
+    process.env['PSTEST_HOST'] = 'myhost';
     process.env['DB_SID'] = 'PSDB';
     const result = await runOracleQuery('SELECT SYSDATE FROM DUAL');
     expect(result.columns).toEqual(['SYSDATE']);

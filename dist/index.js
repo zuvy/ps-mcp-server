@@ -3647,36 +3647,49 @@ function registerLessonTools(server, lessonsDir) {
 }
 
 // src/tools/oracle.ts
-import { z as z8 } from "zod";
+import { z as z9 } from "zod";
 
 // src/lib/oracle.ts
 import oracledb from "oracledb";
-function getOracleConfig() {
+
+// src/lib/ps-servers.ts
+import { z as z8 } from "zod";
+var PS_SERVERS = {
+  pstest: { hostVar: "PSTEST_HOST", uriVar: "PSTEST_URI" },
+  psdev: { hostVar: "PSDEV_HOST", uriVar: "PSDEV_URI" },
+  psprod: { hostVar: "PROD_HOST", uriVar: "PSPROD_URI" }
+};
+var DEFAULT_PS_SERVER = "pstest";
+var psServerParam = z8.enum(["pstest", "psdev", "psprod"]).default(DEFAULT_PS_SERVER).describe("Target PowerSchool server. Always use pstest unless the user asks for psdev/psprod or the task clearly requires it (e.g. verifying production data).");
+
+// src/lib/oracle.ts
+function getOracleConfig(server = DEFAULT_PS_SERVER) {
   const user = process.env["DB_USER"];
   const password = process.env["DB_PASS"];
-  const host = process.env["DB_HOST"];
+  const host = process.env[PS_SERVERS[server].hostVar];
   const sid = process.env["DB_SID"];
   if (!user || !password || !host || !sid) return null;
   const port = parseInt(process.env["DB_PORT"] ?? "1521", 10);
-  return { host, port, sid, user };
+  return { server, host, port, sid, user };
 }
-function getOracleStatus() {
-  const config = getOracleConfig();
+function getOracleStatus(server = DEFAULT_PS_SERVER) {
+  const config = getOracleConfig(server);
   return config ? { configured: true, config } : { configured: false };
 }
-var pool = null;
-async function getPool() {
-  if (pool) return pool;
-  const config = getOracleConfig();
+var pools = /* @__PURE__ */ new Map();
+async function getPool(server) {
+  const existing = pools.get(server);
+  if (existing) return existing;
+  const config = getOracleConfig(server);
   if (!config) {
     throw new Error(
-      "Oracle DB not configured. Set DB_HOST, DB_SID, DB_USER, and DB_PASS."
+      `Oracle DB not configured for ${server}. Set ${PS_SERVERS[server].hostVar}, DB_SID, DB_USER, and DB_PASS.`
     );
   }
   const password = process.env["DB_PASS"];
   const connectString = `${config.host}:${config.port}/${config.sid}`;
-  log("INFO", `oracle: creating pool connectString=${connectString} user=${config.user}`);
-  pool = await oracledb.createPool({
+  log("INFO", `oracle: creating pool server=${server} connectString=${connectString} user=${config.user}`);
+  const pool2 = await oracledb.createPool({
     user: config.user,
     password,
     connectString,
@@ -3684,7 +3697,8 @@ async function getPool() {
     poolMax: 5,
     poolIncrement: 1
   });
-  return pool;
+  pools.set(server, pool2);
+  return pool2;
 }
 function translateOraclePlaceholders(sql, args) {
   const binds = {};
@@ -3694,12 +3708,12 @@ function translateOraclePlaceholders(sql, args) {
   });
   return { sql: translated, binds };
 }
-async function runOracleQuery(sql, binds = {}, limit = 100) {
+async function runOracleQuery(sql, binds = {}, limit = 100, server = DEFAULT_PS_SERVER) {
   if (!/^\s*SELECT\b/i.test(sql)) {
     throw new Error("Only SELECT statements are allowed.");
   }
   const effectiveLimit = Math.min(Math.max(1, limit), 1e3);
-  const p = await getPool();
+  const p = await getPool(server);
   const connection = await p.getConnection();
   try {
     const result = await connection.execute(sql, binds, {
@@ -3735,19 +3749,19 @@ function registerOracleTools(server, getWorkspace) {
     server,
     "oracle_connection_status",
     "Test the Oracle (PowerSchool) database connection and return configuration status. Does not expose the password.",
-    {},
-    async () => {
-      const status = getOracleStatus();
+    { server: psServerParam },
+    async ({ server: server2 }) => {
+      const status = getOracleStatus(server2);
       if (!status.configured) {
         return err({
           configured: false,
-          message: "Oracle DB not configured.",
-          missingVars: "Set DB_USER, DB_PASS, DB_HOST, and DB_SID."
+          message: `Oracle DB not configured for ${server2}.`,
+          missingVars: `Set DB_USER, DB_PASS, ${PS_SERVERS[server2].hostVar}, and DB_SID.`
         });
       }
       const start = Date.now();
       try {
-        await runOracleQuery("SELECT 1 FROM DUAL");
+        await runOracleQuery("SELECT 1 FROM DUAL", {}, 1, server2);
         return ok({ ...status.config, configured: true, connected: true, latencyMs: Date.now() - start });
       } catch (e) {
         return err({ ...status.config, configured: true, connected: false, error: String(e) });
@@ -3759,13 +3773,14 @@ function registerOracleTools(server, getWorkspace) {
     "oracle_run_query",
     "Run a SELECT statement against the live PowerSchool Oracle database. Only SELECT is allowed.",
     {
-      sql: z8.string().describe("SELECT statement to execute. Use named binds with :name syntax."),
-      binds: z8.record(z8.unknown()).optional().describe('Named bind variables, e.g. { "studentId": 12345 }'),
-      limit: z8.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)")
+      sql: z9.string().describe("SELECT statement to execute. Use named binds with :name syntax."),
+      binds: z9.record(z9.unknown()).optional().describe('Named bind variables, e.g. { "studentId": 12345 }'),
+      limit: z9.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)"),
+      server: psServerParam
     },
-    async ({ sql, binds = {}, limit }) => {
+    async ({ sql, binds = {}, limit, server: server2 }) => {
       try {
-        const result = await runOracleQuery(sql, binds, limit);
+        const result = await runOracleQuery(sql, binds, limit, server2);
         return ok({ ...result, rowCount: result.rows.length });
       } catch (e) {
         return err({ error: String(e) });
@@ -3777,16 +3792,17 @@ function registerOracleTools(server, getWorkspace) {
     "oracle_describe_table",
     "Get live column metadata for a PowerSchool Oracle table from ALL_TAB_COLUMNS.",
     {
-      tableName: z8.string().describe("Table name (e.g. STUDENTS, U_MY_EXTENSION). Case-insensitive."),
-      owner: z8.string().optional().describe("Schema owner filter (e.g. SISDBA). Omit to search all accessible owners.")
+      tableName: z9.string().describe("Table name (e.g. STUDENTS, U_MY_EXTENSION). Case-insensitive."),
+      owner: z9.string().optional().describe("Schema owner filter (e.g. SISDBA). Omit to search all accessible owners."),
+      server: psServerParam
     },
-    async ({ tableName, owner }) => {
+    async ({ tableName, owner, server: server2 }) => {
       try {
         const ownerClause = owner ? " AND OWNER = :owner" : "";
         const sql = `SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, OWNER FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = :tableName${ownerClause} ORDER BY COLUMN_ID`;
         const binds = { tableName: tableName.toUpperCase() };
         if (owner) binds.owner = owner.toUpperCase();
-        const { columns, rows } = await runOracleQuery(sql, binds, 500);
+        const { columns, rows } = await runOracleQuery(sql, binds, 500, server2);
         if (rows.length === 0) {
           return err({ error: `Table '${tableName}' not found or not accessible.` });
         }
@@ -3811,16 +3827,17 @@ function registerOracleTools(server, getWorkspace) {
     "oracle_list_tables",
     "List Oracle tables accessible to the DB user, with optional prefix filter. Useful for finding custom U_ plugin tables.",
     {
-      prefix: z8.string().optional().describe('Filter by table name prefix (e.g. "U_" for custom plugin tables). Omit for all tables.'),
-      owner: z8.string().optional().describe('Filter by schema owner (e.g. "SISDBA"). Omit to search all accessible owners.')
+      prefix: z9.string().optional().describe('Filter by table name prefix (e.g. "U_" for custom plugin tables). Omit for all tables.'),
+      owner: z9.string().optional().describe('Filter by schema owner (e.g. "SISDBA"). Omit to search all accessible owners.'),
+      server: psServerParam
     },
-    async ({ prefix, owner }) => {
+    async ({ prefix, owner, server: server2 }) => {
       try {
         const ownerClause = owner ? " AND OWNER = :owner" : "";
         const sql = `SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE TABLE_NAME LIKE :prefix || '%'${ownerClause} ORDER BY OWNER, TABLE_NAME`;
         const binds = { prefix: (prefix ?? "").toUpperCase() };
         if (owner) binds.owner = owner.toUpperCase();
-        const { rows } = await runOracleQuery(sql, binds, 500);
+        const { rows } = await runOracleQuery(sql, binds, 500, server2);
         const tables = rows.map((r) => ({ owner: r[0], name: r[1] }));
         return ok({ tables, count: tables.length });
       } catch (e) {
@@ -3833,11 +3850,12 @@ function registerOracleTools(server, getWorkspace) {
     "oracle_run_named_query",
     "Find a named query in the workspace named_queries.xml files and execute it against the live PowerSchool Oracle database. Translates ~[args.x] placeholders to Oracle :x binds.",
     {
-      queryName: z8.string().describe("The name= attribute of the query in named_queries.xml (e.g. com.example.plugin.myQuery)"),
-      args: z8.record(z8.unknown()).optional().describe('Argument values matching the <args> definition in the query, e.g. { "studentId": 12345 }'),
-      limit: z8.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)")
+      queryName: z9.string().describe("The name= attribute of the query in named_queries.xml (e.g. com.example.plugin.myQuery)"),
+      args: z9.record(z9.unknown()).optional().describe('Argument values matching the <args> definition in the query, e.g. { "studentId": 12345 }'),
+      limit: z9.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)"),
+      server: psServerParam
     },
-    async ({ queryName, args = {}, limit }) => {
+    async ({ queryName, args = {}, limit, server: server2 }) => {
       try {
         const ws = requireWorkspace7(getWorkspace);
         if (!ws.dirs.queriesRoot) {
@@ -3859,7 +3877,7 @@ function registerOracleTools(server, getWorkspace) {
           return err({ error: `Named query '${queryName}' has no SQL content.` });
         }
         const { sql: translatedSql, binds } = translateOraclePlaceholders(found.sql, args);
-        const result = await runOracleQuery(translatedSql, binds, limit);
+        const result = await runOracleQuery(translatedSql, binds, limit, server2);
         return ok({ queryName, ...result, rowCount: result.rows.length });
       } catch (e) {
         return err({ error: String(e) });
@@ -3869,7 +3887,7 @@ function registerOracleTools(server, getWorkspace) {
 }
 
 // src/tools/postgres.ts
-import { z as z9 } from "zod";
+import { z as z10 } from "zod";
 
 // src/lib/pg.ts
 import { Pool } from "pg";
@@ -3884,9 +3902,9 @@ function getPgConfig() {
 function getPgStatus() {
   return { configured: true, config: getPgConfig() };
 }
-var pool2 = null;
+var pool = null;
 function getPool2() {
-  if (pool2) return pool2;
+  if (pool) return pool;
   const config = getPgConfig();
   const poolConfig = {
     database: config.database,
@@ -3896,8 +3914,8 @@ function getPool2() {
     ...config.host ? { host: config.host } : {},
     ...process.env.PS_PG_PASSWORD ? { password: process.env.PS_PG_PASSWORD } : {}
   };
-  pool2 = new Pool(poolConfig);
-  return pool2;
+  pool = new Pool(poolConfig);
+  return pool;
 }
 function applyLimit(sql, limit) {
   if (/\bLIMIT\s+\d+/i.test(sql)) return sql;
@@ -3945,9 +3963,9 @@ function registerPostgresTools(server) {
     "pg_run_query",
     'Run a SELECT statement against the local tpsdata_development PostgreSQL database. Only SELECT is allowed. Use $1, $2, \u2026 for positional parameters. Table names containing "/" (e.g. "mastery_connect/scores") must be double-quoted in SQL.',
     {
-      sql: z9.string().describe("SELECT statement to execute. Use $1, $2, \u2026 for positional parameters."),
-      params: z9.array(z9.unknown()).optional().describe("Positional parameter values matching $1, $2, \u2026 in the SQL"),
-      limit: z9.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)")
+      sql: z10.string().describe("SELECT statement to execute. Use $1, $2, \u2026 for positional parameters."),
+      params: z10.array(z10.unknown()).optional().describe("Positional parameter values matching $1, $2, \u2026 in the SQL"),
+      limit: z10.number().int().min(1).max(1e3).default(100).describe("Max rows to return (default 100, max 1000)")
     },
     async ({ sql, params = [], limit }) => {
       try {
@@ -3963,8 +3981,8 @@ function registerPostgresTools(server) {
     "pg_describe_table",
     "Get column metadata for a tpsdata_development table from information_schema.columns.",
     {
-      tableName: z9.string().describe('Table name (e.g. "students", "daily_attendances_2025"). Use the exact name \u2014 case-sensitive.'),
-      schema: z9.string().default("public").describe("Schema name (default: public)")
+      tableName: z10.string().describe('Table name (e.g. "students", "daily_attendances_2025"). Use the exact name \u2014 case-sensitive.'),
+      schema: z10.string().default("public").describe("Schema name (default: public)")
     },
     async ({ tableName, schema }) => {
       try {
@@ -3996,8 +4014,8 @@ function registerPostgresTools(server) {
     "pg_list_tables",
     'List tables in the tpsdata_development PostgreSQL database. Some table names contain "/" (e.g. "mastery_connect/scores") and require double-quoting in SQL.',
     {
-      search: z9.string().optional().describe('Case-insensitive substring filter on table name (e.g. "attendance" or "mastery")'),
-      schema: z9.string().default("public").describe("Schema name (default: public)")
+      search: z10.string().optional().describe('Case-insensitive substring filter on table name (e.g. "attendance" or "mastery")'),
+      schema: z10.string().default("public").describe("Schema name (default: public)")
     },
     async ({ search, schema }) => {
       try {
@@ -4016,15 +4034,15 @@ function registerPostgresTools(server) {
 // src/lib/ps-server.ts
 import https from "https";
 import { URL as URL2 } from "url";
-function getPsServerConfig() {
-  const url = process.env["PSTEST_URI"];
+function getPsServerConfig(server = DEFAULT_PS_SERVER) {
+  const url = process.env[PS_SERVERS[server].uriVar];
   const user = process.env["PS_USER"];
   const password = process.env["PS_PASS"];
   if (!url || !user || !password) return null;
-  return { url: url.replace(/\/$/, ""), user };
+  return { server, url: url.replace(/\/$/, ""), user };
 }
-function getPsServerStatus() {
-  const config = getPsServerConfig();
+function getPsServerStatus(server = DEFAULT_PS_SERVER) {
+  const config = getPsServerConfig(server);
   return config ? { configured: true, config } : { configured: false };
 }
 function parseCookies(jar, headers) {
@@ -4177,18 +4195,18 @@ function registerServerTools(server) {
   loggedTool(
     server,
     "ps_server_context",
-    "Fetch live context from the running PowerSchool server via the companion plugin endpoints. Returns PS version, installed plugins, custom schema tables (U_ prefix), and named query namespaces. Requires PSTEST_URI, PS_USER, and PS_PASS env vars.",
-    {},
-    async () => {
-      const status = getPsServerStatus();
+    "Fetch live context from the running PowerSchool server via the companion plugin endpoints. Returns PS version, installed plugins, custom schema tables (U_ prefix), and named query namespaces. Requires PS_USER, PS_PASS, and the server URI (PSTEST_URI, PSDEV_URI, or PSPROD_URI).",
+    { server: psServerParam },
+    async ({ server: server2 }) => {
+      const status = getPsServerStatus(server2);
       if (!status.configured) {
         return err3({
           configured: false,
-          message: "PowerSchool server not configured.",
-          missingVars: "Set PSTEST_URI, PS_USER, and PS_PASS in the workspace .mcp.json env block."
+          message: `PowerSchool server ${server2} not configured.`,
+          missingVars: `Set ${PS_SERVERS[server2].uriVar}, PS_USER, and PS_PASS in .env.local.`
         });
       }
-      const url = process.env["PSTEST_URI"];
+      const url = status.config.url;
       const user = process.env["PS_USER"];
       const password = process.env["PS_PASS"];
       try {
@@ -4202,15 +4220,15 @@ function registerServerTools(server) {
 }
 
 // src/prompts/index.ts
-import { z as z10 } from "zod";
+import { z as z11 } from "zod";
 function registerPrompts(server) {
   server.prompt(
     "design_powerquery",
     "Design a PowerSchool named query (PowerQuery) for a described data need. Guides you through naming conventions, column references, parameter binding, and produces a ready-to-use scaffold_powerquery tool call.",
     {
-      description: z10.string().describe('What data is needed \u2014 e.g. "list active students with their homeroom teacher name"'),
-      targetTable: z10.string().describe('Primary PS table to query \u2014 e.g. "STUDENTS"'),
-      psVersion: z10.string().optional().describe("PowerSchool version (optional) \u2014 affects available columns and syntax")
+      description: z11.string().describe('What data is needed \u2014 e.g. "list active students with their homeroom teacher name"'),
+      targetTable: z11.string().describe('Primary PS table to query \u2014 e.g. "STUDENTS"'),
+      psVersion: z11.string().optional().describe("PowerSchool version (optional) \u2014 affects available columns and syntax")
     },
     ({ description, targetTable, psVersion }) => ({
       messages: [
@@ -4272,8 +4290,8 @@ Please proceed with designing the query for: **${description}**`
     "design_db_extension",
     "Design a PowerSchool database extension (user_schema_root XML). Determines whether to extend an existing table or create a new one, then guides you to the right scaffold or add-field tool call.",
     {
-      description: z10.string().describe('What data to capture \u2014 e.g. "track student laptop assignments"'),
-      coreTable: z10.string().optional().describe('PS core table to extend, if known \u2014 e.g. "Students". Omit for independent tables.')
+      description: z11.string().describe('What data to capture \u2014 e.g. "track student laptop assignments"'),
+      coreTable: z11.string().optional().describe('PS core table to extend, if known \u2014 e.g. "Students". Omit for independent tables.')
     },
     ({ description, coreTable }) => ({
       messages: [
@@ -4332,7 +4350,7 @@ Please proceed by calling \`analyze_schema\` for: **${description}**${coreTable 
     "explain_pshtml_tag",
     "Explain a PowerSchool HTML tag pattern, its syntax, and usage. Looks up the tag in the ps-mcp tag reference and provides a plain-language explanation with examples.",
     {
-      tagPattern: z10.string().describe('The tag or pattern to explain \u2014 e.g. "~[tlist_sql", "~(*powerquery", "~[DirectTable.Select"')
+      tagPattern: z11.string().describe('The tag or pattern to explain \u2014 e.g. "~[tlist_sql", "~(*powerquery", "~[DirectTable.Select"')
     },
     ({ tagPattern }) => ({
       messages: [
@@ -4365,9 +4383,9 @@ Please look up and explain: \`${tagPattern}\``
     "design_permission_mapping",
     "Design a PowerSchool permission mapping file that grants PS pages access to named query or table endpoints. Produces a ready-to-use scaffold_permission_mapping tool call.",
     {
-      tableName: z10.string().describe('The endpoint table or query to grant access to \u2014 e.g. "U_Laptops" or "com.example.data.students.active"'),
-      operations: z10.string().describe('Comma-separated HTTP operations to allow \u2014 e.g. "get,post" or "get,post,put,delete"'),
-      sourcePages: z10.string().describe('Comma-separated PS page paths that need access \u2014 e.g. "/admin/students/student_ids.html,/guardian/portal.html"')
+      tableName: z11.string().describe('The endpoint table or query to grant access to \u2014 e.g. "U_Laptops" or "com.example.data.students.active"'),
+      operations: z11.string().describe('Comma-separated HTTP operations to allow \u2014 e.g. "get,post" or "get,post,put,delete"'),
+      sourcePages: z11.string().describe('Comma-separated PS page paths that need access \u2014 e.g. "/admin/students/student_ids.html,/guardian/portal.html"')
     },
     ({ tableName, operations, sourcePages }) => ({
       messages: [

@@ -8,6 +8,7 @@ import {
   translateOraclePlaceholders,
 } from '../lib/oracle.js';
 import { readQueryDir } from '../lib/query-xml.js';
+import { PS_SERVERS, PsServerName, psServerParam } from '../lib/ps-servers.js';
 
 // ---- Helpers ---------------------------------------------------------------
 
@@ -39,19 +40,19 @@ export function registerOracleTools(
   // --------------------------------------------------------------------------
   loggedTool(server, 'oracle_connection_status',
     'Test the Oracle (PowerSchool) database connection and return configuration status. Does not expose the password.',
-    {},
-    async () => {
-      const status = getOracleStatus();
+    { server: psServerParam },
+    async ({ server }: { server: PsServerName }) => {
+      const status = getOracleStatus(server);
       if (!status.configured) {
         return err({
           configured: false,
-          message: 'Oracle DB not configured.',
-          missingVars: 'Set DB_USER, DB_PASS, DB_HOST, and DB_SID.',
+          message: `Oracle DB not configured for ${server}.`,
+          missingVars: `Set DB_USER, DB_PASS, ${PS_SERVERS[server].hostVar}, and DB_SID.`,
         });
       }
       const start = Date.now();
       try {
-        await runOracleQuery('SELECT 1 FROM DUAL');
+        await runOracleQuery('SELECT 1 FROM DUAL', {}, 1, server);
         return ok({ ...status.config, configured: true, connected: true, latencyMs: Date.now() - start });
       } catch (e) {
         return err({ ...status.config, configured: true, connected: false, error: String(e) });
@@ -66,10 +67,11 @@ export function registerOracleTools(
       sql:   z.string().describe('SELECT statement to execute. Use named binds with :name syntax.'),
       binds: z.record(z.unknown()).optional().describe('Named bind variables, e.g. { "studentId": 12345 }'),
       limit: z.number().int().min(1).max(1000).default(100).describe('Max rows to return (default 100, max 1000)'),
+      server: psServerParam,
     },
-    async ({ sql, binds = {}, limit }) => {
+    async ({ sql, binds = {}, limit, server }) => {
       try {
-        const result = await runOracleQuery(sql, binds, limit);
+        const result = await runOracleQuery(sql, binds, limit, server);
         return ok({ ...result, rowCount: result.rows.length });
       } catch (e) {
         return err({ error: String(e) });
@@ -83,15 +85,16 @@ export function registerOracleTools(
     {
       tableName: z.string().describe('Table name (e.g. STUDENTS, U_MY_EXTENSION). Case-insensitive.'),
       owner:     z.string().optional().describe('Schema owner filter (e.g. SISDBA). Omit to search all accessible owners.'),
+      server:    psServerParam,
     },
-    async ({ tableName, owner }) => {
+    async ({ tableName, owner, server }) => {
       try {
         const ownerClause = owner ? ' AND OWNER = :owner' : '';
         const sql = `SELECT COLUMN_NAME, DATA_TYPE, DATA_LENGTH, DATA_PRECISION, DATA_SCALE, NULLABLE, OWNER FROM ALL_TAB_COLUMNS WHERE TABLE_NAME = :tableName${ownerClause} ORDER BY COLUMN_ID`;
         const binds: Record<string, unknown> = { tableName: tableName.toUpperCase() };
         if (owner) binds.owner = owner.toUpperCase();
 
-        const { columns, rows } = await runOracleQuery(sql, binds, 500);
+        const { columns, rows } = await runOracleQuery(sql, binds, 500, server);
         if (rows.length === 0) {
           return err({ error: `Table '${tableName}' not found or not accessible.` });
         }
@@ -120,15 +123,16 @@ export function registerOracleTools(
     {
       prefix: z.string().optional().describe('Filter by table name prefix (e.g. "U_" for custom plugin tables). Omit for all tables.'),
       owner:  z.string().optional().describe('Filter by schema owner (e.g. "SISDBA"). Omit to search all accessible owners.'),
+      server: psServerParam,
     },
-    async ({ prefix, owner }) => {
+    async ({ prefix, owner, server }) => {
       try {
         const ownerClause = owner ? ' AND OWNER = :owner' : '';
         const sql = `SELECT OWNER, TABLE_NAME FROM ALL_TABLES WHERE TABLE_NAME LIKE :prefix || '%'${ownerClause} ORDER BY OWNER, TABLE_NAME`;
         const binds: Record<string, unknown> = { prefix: (prefix ?? '').toUpperCase() };
         if (owner) binds.owner = owner.toUpperCase();
 
-        const { rows } = await runOracleQuery(sql, binds, 500);
+        const { rows } = await runOracleQuery(sql, binds, 500, server);
         const tables = rows.map((r) => ({ owner: r[0], name: r[1] }));
         return ok({ tables, count: tables.length });
       } catch (e) {
@@ -144,8 +148,9 @@ export function registerOracleTools(
       queryName: z.string().describe('The name= attribute of the query in named_queries.xml (e.g. com.example.plugin.myQuery)'),
       args:      z.record(z.unknown()).optional().describe('Argument values matching the <args> definition in the query, e.g. { "studentId": 12345 }'),
       limit:     z.number().int().min(1).max(1000).default(100).describe('Max rows to return (default 100, max 1000)'),
+      server:    psServerParam,
     },
-    async ({ queryName, args = {}, limit }) => {
+    async ({ queryName, args = {}, limit, server }) => {
       try {
         const ws = requireWorkspace(getWorkspace);
         if (!ws.dirs.queriesRoot) {
@@ -167,7 +172,7 @@ export function registerOracleTools(
         }
 
         const { sql: translatedSql, binds } = translateOraclePlaceholders(found.sql, args);
-        const result = await runOracleQuery(translatedSql, binds, limit);
+        const result = await runOracleQuery(translatedSql, binds, limit, server);
         return ok({ queryName, ...result, rowCount: result.rows.length });
       } catch (e) {
         return err({ error: String(e) });

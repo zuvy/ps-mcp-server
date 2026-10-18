@@ -140,6 +140,18 @@ Set `PS_PLUGIN_ROOT` to the project root directory (the VS Code workspace folder
 
 Add to `~/.claude/settings.json` under `mcpServers`, or use the VS Code `.vscode/mcp.json` approach above.
 
+### PowerSchool server environment
+
+The Oracle and `ps_server_context` tools read the shared `.env.local` variables. Each tool takes an optional `server` argument (`pstest` | `psdev` | `psprod`, default `pstest`).
+
+| Server | Oracle host | Web URI |
+|---|---|---|
+| `pstest` (default) | `PSTEST_HOST` | `PSTEST_URI` |
+| `psdev` | `PSDEV_HOST` | `PSDEV_URI` |
+| `psprod` | `PROD_HOST` | `PSPROD_URI` |
+
+Shared across servers: `DB_USER`, `DB_PASS`, `DB_SID`, `DB_PORT` (default 1521), `PS_USER`, `PS_PASS`.
+
 ---
 
 ## Workspace detection

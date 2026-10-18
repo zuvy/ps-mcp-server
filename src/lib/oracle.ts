@@ -1,9 +1,11 @@
 import oracledb from 'oracledb';
 import { log } from './logger.js';
+import { PS_SERVERS, PsServerName, DEFAULT_PS_SERVER } from './ps-servers.js';
 
 // ---- Config ----------------------------------------------------------------
 
 export interface OracleConfig {
+  server: PsServerName;
   host: string;
   port: number;
   sid: string;
@@ -11,42 +13,43 @@ export interface OracleConfig {
 }
 
 /** Returns config without password, or null if required env vars are missing. */
-export function getOracleConfig(): OracleConfig | null {
+export function getOracleConfig(server: PsServerName = DEFAULT_PS_SERVER): OracleConfig | null {
   const user = process.env['DB_USER'];
   const password = process.env['DB_PASS'];
-  const host = process.env['DB_HOST'];
+  const host = process.env[PS_SERVERS[server].hostVar];
   const sid = process.env['DB_SID'];
   if (!user || !password || !host || !sid) return null;
 
   const port = parseInt(process.env['DB_PORT'] ?? '1521', 10);
-  return { host, port, sid, user };
+  return { server, host, port, sid, user };
 }
 
-export function getOracleStatus(): { configured: boolean; config?: OracleConfig } {
-  const config = getOracleConfig();
+export function getOracleStatus(server: PsServerName = DEFAULT_PS_SERVER): { configured: boolean; config?: OracleConfig } {
+  const config = getOracleConfig(server);
   return config ? { configured: true, config } : { configured: false };
 }
 
 // ---- Pool ------------------------------------------------------------------
 
-let pool: oracledb.Pool | null = null;
+const pools = new Map<PsServerName, oracledb.Pool>();
 
-async function getPool(): Promise<oracledb.Pool> {
-  if (pool) return pool;
+async function getPool(server: PsServerName): Promise<oracledb.Pool> {
+  const existing = pools.get(server);
+  if (existing) return existing;
 
-  const config = getOracleConfig();
+  const config = getOracleConfig(server);
   if (!config) {
     throw new Error(
-      'Oracle DB not configured. Set DB_HOST, DB_SID, DB_USER, and DB_PASS.',
+      `Oracle DB not configured for ${server}. Set ${PS_SERVERS[server].hostVar}, DB_SID, DB_USER, and DB_PASS.`,
     );
   }
 
   const password = process.env['DB_PASS']!;
   const connectString = `${config.host}:${config.port}/${config.sid}`;
 
-  log('INFO', `oracle: creating pool connectString=${connectString} user=${config.user}`);
+  log('INFO', `oracle: creating pool server=${server} connectString=${connectString} user=${config.user}`);
 
-  pool = await oracledb.createPool({
+  const pool = await oracledb.createPool({
     user: config.user,
     password,
     connectString,
@@ -55,14 +58,13 @@ async function getPool(): Promise<oracledb.Pool> {
     poolIncrement: 1,
   });
 
+  pools.set(server, pool);
   return pool;
 }
 
 export async function closeOraclePool(): Promise<void> {
-  if (pool) {
-    await pool.close(0);
-    pool = null;
-  }
+  for (const pool of pools.values()) await pool.close(0);
+  pools.clear();
 }
 
 // ---- Query -----------------------------------------------------------------
@@ -88,13 +90,14 @@ export async function runOracleQuery(
   sql: string,
   binds: Record<string, unknown> = {},
   limit = 100,
+  server: PsServerName = DEFAULT_PS_SERVER,
 ): Promise<{ columns: string[]; rows: unknown[][] }> {
   if (!/^\s*SELECT\b/i.test(sql)) {
     throw new Error('Only SELECT statements are allowed.');
   }
 
   const effectiveLimit = Math.min(Math.max(1, limit), 1000);
-  const p = await getPool();
+  const p = await getPool(server);
   const connection = await p.getConnection();
 
   try {
