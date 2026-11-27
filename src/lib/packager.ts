@@ -124,7 +124,7 @@ export async function buildPluginZip(
     // Exclude version control and tooling directories
     archive.glob('**/*', {
       cwd: artifactsRoot,
-      ignore: ['.git/**', '.gitignore', 'node_modules/**', '*.DS_Store', 'Thumbs.db'],
+      ignore: ['.git/**', '.gitignore', 'node_modules/**', 'dist/**', '*.DS_Store', 'Thumbs.db'],
     });
 
     archive.finalize();
