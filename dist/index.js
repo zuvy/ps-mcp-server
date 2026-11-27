@@ -2003,10 +2003,10 @@ function registerPackageTools(server, getWorkspace) {
   loggedTool(
     server,
     "package_plugin",
-    "Build a distributable ZIP from the plugin artifacts root. Runs pre-flight validation (plugin.xml required fields, named query parse errors, duplicate query names) before packaging. Returns the output path and file size.",
+    "Build a distributable ZIP from the plugin artifacts root. Runs pre-flight validation (plugin.xml required fields, named query parse errors, duplicate query names) before packaging. Returns the output path and file size. The default output directory can be overridden with the PS_DIST_PATH environment variable; otherwise the ZIP goes to dist/ inside the artifacts root (flat/env layouts) or beside src/ at the project root (src-based layouts).",
     {
       outputPath: z2.string().optional().describe(
-        "Where to write the ZIP. Defaults to ./dist/{pluginName}-v{version}.zip relative to the workspace artifacts root."
+        "Where to write the ZIP. Overrides PS_DIST_PATH. Defaults to PS_DIST_PATH/{pluginName}-v{version}.zip if set, otherwise to the layout-dependent dist/ folder."
       ),
       force: z2.boolean().default(false).describe("Overwrite existing output file without prompting (default: false)"),
       skipValidation: z2.boolean().default(false).describe("Skip pre-flight validation of plugin.xml and named query files (default: false)")
@@ -2041,7 +2041,7 @@ function registerPackageTools(server, getWorkspace) {
         const pluginData = readPluginXml(ws.pluginXmlPath);
         const safeName = (pluginData.name || "plugin").replace(/[^a-zA-Z0-9._-]/g, "_");
         const safeVersion = (pluginData.version || "0.0.0").replace(/[^a-zA-Z0-9._-]/g, "_");
-        const distDir = ws.layout === "flat" || ws.layout === "env" ? path9.join(ws.artifactsRoot, "dist") : path9.join(ws.artifactsRoot, "..", "dist");
+        const distDir = process.env["PS_DIST_PATH"] ? path9.resolve(process.env["PS_DIST_PATH"]) : ws.layout === "flat" || ws.layout === "env" ? path9.join(ws.artifactsRoot, "dist") : path9.join(ws.artifactsRoot, "..", "dist");
         resolvedOutputPath = path9.join(distDir, `${safeName}-v${safeVersion}.zip`);
       }
       if (fs12.existsSync(resolvedOutputPath) && !force) {

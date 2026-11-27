@@ -146,13 +146,13 @@ export function registerPackageTools(
 
   loggedTool(server,
     'package_plugin',
-    'Build a distributable ZIP from the plugin artifacts root. Runs pre-flight validation (plugin.xml required fields, named query parse errors, duplicate query names) before packaging. Returns the output path and file size.',
+    'Build a distributable ZIP from the plugin artifacts root. Runs pre-flight validation (plugin.xml required fields, named query parse errors, duplicate query names) before packaging. Returns the output path and file size. The default output directory can be overridden with the PS_DIST_PATH environment variable; otherwise the ZIP goes to dist/ inside the artifacts root (flat/env layouts) or beside src/ at the project root (src-based layouts).',
     {
       outputPath: z
         .string()
         .optional()
         .describe(
-          'Where to write the ZIP. Defaults to ./dist/{pluginName}-v{version}.zip relative to the workspace artifacts root.',
+          'Where to write the ZIP. Overrides PS_DIST_PATH. Defaults to PS_DIST_PATH/{pluginName}-v{version}.zip if set, otherwise to the layout-dependent dist/ folder.',
         ),
       force: z
         .boolean()
@@ -197,10 +197,13 @@ export function registerPackageTools(
         const pluginData = readPluginXml(ws.pluginXmlPath);
         const safeName = (pluginData.name || 'plugin').replace(/[^a-zA-Z0-9._-]/g, '_');
         const safeVersion = (pluginData.version || '0.0.0').replace(/[^a-zA-Z0-9._-]/g, '_');
+        // Priority: explicit outputPath arg > PS_DIST_PATH env var > layout default.
         // For flat/env layouts dist/ lives inside artifactsRoot; for src-based/env-src it lives beside src/ at the project root.
-        const distDir = (ws.layout === 'flat' || ws.layout === 'env')
-          ? path.join(ws.artifactsRoot, 'dist')
-          : path.join(ws.artifactsRoot, '..', 'dist');
+        const distDir = process.env['PS_DIST_PATH']
+          ? path.resolve(process.env['PS_DIST_PATH'])
+          : (ws.layout === 'flat' || ws.layout === 'env')
+            ? path.join(ws.artifactsRoot, 'dist')
+            : path.join(ws.artifactsRoot, '..', 'dist');
         resolvedOutputPath = path.join(distDir, `${safeName}-v${safeVersion}.zip`);
       }
 
