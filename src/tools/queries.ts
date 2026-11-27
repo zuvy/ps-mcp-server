@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
+import { loggedTool } from '../lib/logger.js';
 import { WorkspaceContext } from '../lib/workspace.js';
 import { DataDictionary } from '../lib/data-dictionary.js';
 import {
@@ -62,7 +63,7 @@ function registerScaffoldPowerquery(
   dict: DataDictionary,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'scaffold_powerquery',
     'Generate a named_queries.xml file with the correct PS structure. File and query naming follow 5-part recommended conventions by default.',
     {
@@ -330,7 +331,7 @@ function registerListPowerqueries(
   server: McpServer,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'list_powerqueries',
     'List all named query definitions in the current workspace queries_root directory.',
     {},
@@ -390,7 +391,7 @@ function registerValidateNamedQueries(
   dict: DataDictionary,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'validate_named_queries',
     'Validate named query XML files in the workspace. Checks structure, column references against data dictionary, arg/param consistency, and duplicate query names.',
     {

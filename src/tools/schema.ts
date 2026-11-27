@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
+import { loggedTool } from '../lib/logger.js';
 import { WorkspaceContext } from '../lib/workspace.js';
 import { DataDictionary } from '../lib/data-dictionary.js';
 import {
@@ -49,7 +50,7 @@ const FIELD_SCHEMA = z.object({
 // ---- list_custom_tables ----------------------------------------------------
 
 function registerListCustomTables(server: McpServer, dict: DataDictionary): void {
-  server.tool(
+  loggedTool(server,
     'list_custom_tables',
     'Query the data dictionary for all U_-prefixed custom tables known to PowerSchool. Results are informational — they reflect what is in the data dictionary, not necessarily what is installed on a specific PS instance.',
     {
@@ -91,7 +92,7 @@ function registerListCustomTables(server: McpServer, dict: DataDictionary): void
 // ---- list_db_extensions ----------------------------------------------------
 
 function registerListDbExtensions(server: McpServer, getWorkspace: () => WorkspaceContext | null): void {
-  server.tool(
+  loggedTool(server,
     'list_db_extensions',
     'List all user schema extension definitions in the current workspace (user_schema_root/*.xml). Includes the PS HTML reference syntax for each extension.',
     {},
@@ -149,7 +150,7 @@ function registerAnalyzeSchema(
   dict: DataDictionary,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'analyze_schema',
     'Query the data dictionary and workspace user_schema_root to surface existing custom tables and extensions, then recommend whether to extend an existing table or create a new one. Call this before scaffold_db_extension.',
     {
@@ -295,7 +296,7 @@ function registerScaffoldDbExtension(
   server: McpServer,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'scaffold_db_extension',
     'Generate a user_schema_root XML file defining a new custom table extension. Returns the PS HTML reference syntax so the developer can immediately use the correct tags in custom pages.',
     {
@@ -487,7 +488,7 @@ function registerAddFieldToExtension(
   server: McpServer,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'add_field_to_extension',
     'Add one or more fields to an existing user_schema_root XML file in the workspace. Use when analyze_schema recommends extending an existing table.',
     {

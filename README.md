@@ -16,7 +16,7 @@ ps-mcp exposes three categories of capability to an MCP client:
 | `scaffold_plugin` | Generate a new plugin.xml with all optional blocks |
 | `validate_plugin_xml` | Validate plugin.xml against PS requirements |
 | `bump_plugin_version` | Increment major/minor/patch or set an explicit version |
-| `package_plugin` | Pre-flight validate and build a distributable ZIP (output goes to `dist/` inside the artifacts root, or to `PS_DIST_PATH` if set) |
+| `package_plugin` | Pre-flight validate and build a distributable ZIP (output goes to the layout's `dist/` folder, or to `PS_DIST_PATH` if set) |
 | `rename_plugin` | Refactor plugin name and all query/permission namespaces (ports `rename.rb`) |
 | `scaffold_powerquery` | Generate a named query XML file with correct column refs |
 | `list_powerqueries` | List all named queries in the workspace |
@@ -69,6 +69,8 @@ The server loads these assets at startup from `.docs/`:
 - **Data dictionary** (`data_dictionary.csv`) — Complete PS database schema: every core table and field with types and descriptions. Used for column validation in named queries, access request sync, and schema analysis.
 - **Tag reference** (`.docs/tags/*.json`) — PS HTML tag documentation covering ~37 categories (tlist_sql, powerquery, frn, if/logic, dates, grades, gpa, contacts, etc.).
 - **Documentation** (`.docs/*.md`) — 62+ markdown files covering PS customization, the Data Access API, OAuth, SSO, DB extensions, named queries, permissions, and more.
+
+> **Note: `.docs/` is not in this repository.** The reference material in `.docs/` contains proprietary PowerSchool content. It is licensed for use by PowerSchool Support Technical Users but may not be shared, so it is deliberately git-ignored and must never be committed or redistributed. To run the server with full reference data, get these files through your own PowerSchool support channels and place them in `.docs/` at the project root.
 
 ---
 
@@ -177,6 +179,18 @@ Verify with:
 claude mcp list          # should show: ps-mcp ... ✔ Connected
 ```
 
+### PowerSchool server environment
+
+The Oracle and `ps_server_context` tools read the shared `.env.local` variables. Each tool takes an optional `server` argument (`pstest` | `psdev` | `psprod`, default `pstest`).
+
+| Server | Oracle host | Web URI |
+|---|---|---|
+| `pstest` (default) | `PSTEST_HOST` | `PSTEST_URI` |
+| `psdev` | `PSDEV_HOST` | `PSDEV_URI` |
+| `psprod` | `PROD_HOST` | `PSPROD_URI` |
+
+Shared across servers: `DB_USER`, `DB_PASS`, `DB_SID`, `DB_PORT` (default 1521), `PS_USER`, `PS_PASS`.
+
 ---
 
 ## Workspace detection
@@ -240,7 +254,7 @@ If no workspace is detected, tools that require one will return a clear error. R
 
 1. **`outputPath` tool argument** — explicit per-call path (highest priority)
 2. **`PS_DIST_PATH` env var** — set this to any absolute directory path to use it as the default output directory across all calls
-3. **`dist/` inside the artifacts root** — created automatically alongside `web_root`, `queries_root`, etc.
+3. **Layout default** — `dist/` inside the artifacts root for flat/env layouts (alongside `web_root`, `queries_root`, etc.), or `dist/` beside `src/` at the project root for src-based layouts
 
 To set a project-wide default, add `PS_DIST_PATH` to the `env` block in your MCP config:
 
@@ -251,7 +265,7 @@ To set a project-wide default, add `PS_DIST_PATH` to the `env` block in your MCP
 }
 ```
 
-If neither `PS_DIST_PATH` nor an explicit `outputPath` is provided, the ZIP is written to `{artifactsRoot}/dist/{pluginName}-v{version}.zip`. The `dist/` directory is created automatically if it does not exist.
+If neither `PS_DIST_PATH` nor an explicit `outputPath` is provided, the ZIP is written to `dist/{pluginName}-v{version}.zip` in the layout-default location above. Only `plugin.xml` and the known artifact folders are zipped, so earlier ZIPs in `dist/` are never bundled. The `dist/` directory is created automatically if it does not exist.
 
 ---
 

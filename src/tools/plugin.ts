@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
+import { loggedTool } from '../lib/logger.js';
 import { WorkspaceContext } from '../lib/workspace.js';
 import { DataDictionary } from '../lib/data-dictionary.js';
 import {
@@ -55,7 +56,7 @@ function registerGetPluginInfo(
   server: McpServer,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'get_plugin_info',
     'Read and return structured information about the current workspace plugin (name, version, publisher, OAuth level, access_request fields, links, artifact directory counts).',
     {},
@@ -72,6 +73,29 @@ function registerGetPluginInfo(
 
       const data = readPluginXml(pluginXmlPath);
       const dirs = ws.dirs;
+
+      // Compute expected package output path (mirrors package_plugin logic)
+      const safeName = (data.name || 'plugin').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const safeVersion = (data.version || '0.0.0').replace(/[^a-zA-Z0-9._-]/g, '_');
+      // For flat layouts dist/ lives inside artifactsRoot; for src-based it lives beside src/ at the project root.
+      const distDir = ws.layout === 'flat'
+        ? path.join(ws.artifactsRoot, 'dist')
+        : path.join(ws.artifactsRoot, '..', 'dist');
+      const expectedZipName = `${safeName}-v${safeVersion}.zip`;
+      const expectedZipPath = path.join(distDir, expectedZipName);
+
+      // Scan dist/ for any existing ZIP files, sorted newest first
+      let existingDistFiles: Array<{ file: string; path: string; sizeBytes: number; modifiedAt: string }> = [];
+      if (fs.existsSync(distDir)) {
+        existingDistFiles = fs.readdirSync(distDir)
+          .filter(f => f.endsWith('.zip'))
+          .map(f => {
+            const fp = path.join(distDir, f);
+            const stat = fs.statSync(fp);
+            return { file: f, path: fp, sizeBytes: stat.size, modifiedAt: stat.mtime.toISOString() };
+          })
+          .sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+      }
 
       const result = {
         name: data.name,
@@ -109,6 +133,12 @@ function registerGetPluginInfo(
           webRoot: dirs.webRoot ?? null,
           pagecataloging: dirs.pagecataloging ?? null,
         },
+        packaging: {
+          expectedOutputPath: expectedZipPath,
+          outputAlreadyExists: fs.existsSync(expectedZipPath),
+          distDir,
+          existingDistFiles,
+        },
       };
 
       return {
@@ -124,7 +154,7 @@ function registerScaffoldPlugin(
   server: McpServer,
   getWorkspace: () => WorkspaceContext | null,
 ): void {
-  server.tool(
+  loggedTool(server,
     'scaffold_plugin',
     'Generate a new plugin.xml with correct namespace, required elements, and optionally OAuth, autoinstall, registration, and OpenID stubs. Writes to the workspace plugin.xml path.',
     {
@@ -277,7 +307,7 @@ function registerValidatePluginXml(
   getWorkspace: () => WorkspaceContext | null,
   dict: DataDictionary,
 ): void {
-  server.tool(
+  loggedTool(server,
     'validate_plugin_xml',
     'Validate plugin.xml against known PowerSchool rules. Returns structured errors, warnings, and info notices.',
     {},
